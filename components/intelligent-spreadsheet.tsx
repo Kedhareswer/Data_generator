@@ -46,6 +46,7 @@ export function IntelligentSpreadsheet() {
   const [dataMetadata, setDataMetadata] = useState<any>(null)
   const [isPreviewMode, setIsPreviewMode] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [examplePromptsExpanded, setExamplePromptsExpanded] = useState(false)
   const [llmSettings, setLLMSettings] = useState(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("llmSettings")
@@ -204,7 +205,9 @@ export function IntelligentSpreadsheet() {
             throw new Error("Invalid response format from server")
           }
         } catch (parseError) {
-          throw new Error(`Failed to parse response: ${parseError instanceof Error ? parseError.message : String(parseError)}`)
+          throw new Error(
+            `Failed to parse response: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+          )
         }
       } catch (error) {
         console.error("Failed to execute cell command:", error)
@@ -306,13 +309,23 @@ export function IntelligentSpreadsheet() {
     }
   }
 
+  const examplePrompts = [
+    "Netflix movies with IMDB_ID, title, genre, and release year",
+    "Top 100 tech companies with revenue and employee count",
+    "Olympic athletes with medals and countries from 2020",
+    "Stock market data for FAANG companies with prices",
+    "Popular books with ISBN, author, genre, and publication year",
+    "World's largest cities with population and country",
+    "Cryptocurrency prices with market cap and volume",
+    "Fortune 500 companies with industry and headquarters",
+    "Premier League football players with goals and assists",
+    "Nobel Prize winners with category and year",
+  ]
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="container mx-auto p-4">
-      <motion.h1 initial={{ y: -20 }} animate={{ y: 0 }} className="text-2xl font-bold mb-4 text-center flex items-center justify-center gap-2">
-        Intelligent Spreadsheet
-        <Button variant="ghost" size="icon" onClick={() => setSettingsOpen(true)} aria-label="Settings">
-          <Settings className="w-5 h-5" />
-        </Button>
+      <motion.h1 initial={{ y: -20 }} animate={{ y: 0 }} className="text-2xl font-bold mb-4 text-center">
+        Data Generator
       </motion.h1>
       <LLMSettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} onSave={setLLMSettings} />
       <SocialLinks />
@@ -349,6 +362,9 @@ export function IntelligentSpreadsheet() {
             <Button onClick={exportToExcel} variant="outline" size="sm">
               <Download className="w-4 h-4 mr-2" />
               Excel
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)} aria-label="Settings">
+              <Settings className="w-4 h-4" />
             </Button>
           </div>
         </div>
@@ -392,29 +408,39 @@ export function IntelligentSpreadsheet() {
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.4 }}
       >
-        <h2 className="text-xl font-semibold mb-2 flex items-center">
-          <ChevronDown className="mr-2" />
-          Command History
+        <h2
+          className="text-xl font-semibold mb-2 flex items-center cursor-pointer hover:text-gray-600 transition-colors"
+          onClick={() => setExamplePromptsExpanded(!examplePromptsExpanded)}
+        >
+          {examplePromptsExpanded ? <ChevronDown className="mr-2" /> : <ChevronRight className="mr-2" />}
+          Example Prompts
         </h2>
-        <ul className="space-y-2 max-h-40 overflow-y-auto">
-          <AnimatePresence>
-            {messages
-              .filter((m) => m.role === "user")
-              .map((m, index) => (
+        <AnimatePresence>
+          {examplePromptsExpanded && (
+            <motion.ul
+              className="space-y-2 max-h-60 overflow-y-auto"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              {examplePrompts.map((example, index) => (
                 <motion.li
                   key={index}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20 }}
-                  transition={{ delay: index * 0.1 }}
-                  className="bg-muted p-2 rounded flex items-center"
+                  transition={{ delay: index * 0.05 }}
+                  className="bg-muted p-2 rounded flex items-center cursor-pointer hover:bg-muted/80 transition-colors"
+                  onClick={() => setInput(example)}
                 >
                   <ChevronRight className="mr-2 flex-shrink-0" />
-                  <span>{m.content}</span>
+                  <span>{example}</span>
                 </motion.li>
               ))}
-          </AnimatePresence>
-        </ul>
+            </motion.ul>
+          )}
+        </AnimatePresence>
       </motion.div>
 
       <motion.div
