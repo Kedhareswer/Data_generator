@@ -143,7 +143,9 @@ Rules:
 3. Ensure data consistency and proper formatting
 4. Handle data type conversions appropriately
 
-Return the transformed data as a JSON array of objects, where each object has keys matching the target columns.`
+Return the transformed data as a JSON object with a single property "data" that is an array of objects, where each object has keys matching the target columns.
+
+Do NOT include any explanation, markdown, or code block. Only output the JSON.`
                 const transformed = await callLLM({
                   prompt: transformPrompt,
                   schema: z.object({ data: z.array(z.record(z.string(), z.string())) }),
