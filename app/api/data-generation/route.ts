@@ -56,7 +56,6 @@ export async function POST(req: NextRequest) {
   try {
     const { prompt, dataSource, currentData, userProvider, userModel, userApiKey, kaggleUsername, kaggleApiKey } = await req.json()
 
-    console.log("Processing data generation request:", { prompt, dataSource, userProvider, userModel })
 
     // Step 1: Analyze the user request
     const analysis = await callLLM({
@@ -67,7 +66,6 @@ export async function POST(req: NextRequest) {
       userApiKey,
     })
 
-    console.log("Analysis result:", analysis)
 
     // Step 2: Try to get real data from Kaggle first
     let retrievedData: Record<string, string>[] = []
@@ -77,13 +75,11 @@ export async function POST(req: NextRequest) {
       const kaggleClient = createKaggleClient(kaggleUsername, kaggleApiKey)
 
       if (!kaggleClient.hasCredentials()) {
-        console.log("Kaggle credentials not found, skipping Kaggle search")
       } else {
         const searchQuery = analysis.searchTerms.join(" ")
         const searchResult = await kaggleClient.searchDatasets(searchQuery)
 
         if (searchResult.datasets.length > 0) {
-          console.log("Found Kaggle datasets:", searchResult.datasets.length)
           try {
             const datasetRef = searchResult.datasets[0].ref
             const zipBuffer = await kaggleClient.downloadDataset(datasetRef)
@@ -157,7 +153,6 @@ Do NOT include any explanation, markdown, or code block. Only output the JSON.`
       }
     }
 
-    console.log("Retrieved data:", retrievedData.length, "rows")
 
     // Step 4: Format data for spreadsheet (limit to 20 rows for preview)
     const limitedData = retrievedData.slice(0, 20)
@@ -188,7 +183,6 @@ Do NOT include any explanation, markdown, or code block. Only output the JSON.`
       isPreview: limitedData.length === 20,
     }
 
-    console.log("Sending response:", { action: action.type, metadata })
 
     return NextResponse.json({ action, metadata })
   } catch (error) {

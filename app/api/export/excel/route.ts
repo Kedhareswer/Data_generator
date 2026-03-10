@@ -1,12 +1,18 @@
 import { type NextRequest, NextResponse } from "next/server"
 import * as XLSX from "xlsx"
+import { z } from "zod"
+
+const ExportSchema = z.object({
+  rows: z.array(z.object({
+    cells: z.array(z.object({ value: z.union([z.string(), z.number()]).default("") })),
+  })),
+})
 
 export async function POST(req: NextRequest) {
   try {
-    const { rows } = await req.json()
+    const { rows } = ExportSchema.parse(await req.json())
 
-    // Convert rows to worksheet data
-    const worksheetData = rows.map((row: any) => row.cells.map((cell: any) => cell.value))
+    const worksheetData = rows.map((row) => row.cells.map((cell) => cell.value))
 
     // Create workbook and worksheet
     const workbook = XLSX.utils.book_new()

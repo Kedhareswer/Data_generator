@@ -10,8 +10,21 @@ const CellCommandSchema = z.object({
   }),
 })
 
+const InputSchema = z.object({
+  command: z.string().min(1, "Command cannot be empty"),
+})
+
 export async function POST(req: Request) {
-  const { command } = await req.json()
+  let command: string
+  try {
+    const body = InputSchema.parse(await req.json())
+    command = body.command
+  } catch {
+    return new Response(
+      JSON.stringify({ type: "ERROR", payload: { message: "Invalid request: command is required" } }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    )
+  }
 
   try {
     const object = await callLLM({

@@ -124,18 +124,15 @@ async function tryAnthropic({ prompt, schema, userModel, userApiKey }: { prompt:
 }
 
 async function tryGemini({ prompt, schema, userModel, userApiKey }: { prompt: string; schema: z.ZodTypeAny; userModel?: string; userApiKey?: string }) {
-  console.log("[Gemini] Called with prompt:", prompt)
   const apiKey = userApiKey || process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error("Gemini API key missing")
   const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({ model: userModel || "gemini-pro" })
+  const model = genAI.getGenerativeModel({ model: userModel || "gemini-1.5-flash-latest" })
   const result = await model.generateContent(prompt)
   const text = await result.response.text()
-  console.log("[Gemini] Raw response:", text)
   try {
-    const parsed = JSON.parse(text)
-    const validated = schema.parse(parsed)
-    return validated
+    const parsed = JSON.parse(stripCodeBlock(text))
+    return schema.parse(parsed)
   } catch (err) {
     console.error("[Gemini] Error parsing or validating response:", err)
     throw err
