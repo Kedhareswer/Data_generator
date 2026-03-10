@@ -1,73 +1,53 @@
 import { NextRequest, NextResponse } from "next/server"
-import { kaggleClient } from "@/utils/kaggle-integration"
+import { createKaggleClient } from "@/utils/kaggle-integration"
 import * as unzipper from "unzipper"
-import * as csv from "csv-parse/sync"
-import crypto from "crypto"
-// Import mcp_Neon_run_sql from the global functions namespace
-// @ts-expect-error: mcp_Neon_run_sql is injected by the platform
-const { mcp_Neon_run_sql } = globalThis.functions || {}
-
-const NEON_PROJECT_ID = "long-breeze-94604644"
+import { parse as csvParse } from "csv-parse"
 
 export async function POST(req: NextRequest) {
   try {
-    const { kaggle_ref, file_name } = await req.json()
-    const now = new Date().toISOString()
-    // Check cache in Neon
-    let cachedPreview = null
-    const cacheResult = await mcp_Neon_run_sql({
-      params: {
-        sql: `SELECT data_preview FROM kaggle_file_cache WHERE kaggle_ref = $1 AND file_name = $2 ORDER BY created_at DESC LIMIT 1`,
-        projectId: NEON_PROJECT_ID,
-      },
-      args: [kaggle_ref, file_name],
-    })
-    if (cacheResult && cacheResult.rows && cacheResult.rows[0] && cacheResult.rows[0].data_preview) {
-      try {
-        cachedPreview = JSON.parse(cacheResult.rows[0].data_preview)
-      } catch {
-        cachedPreview = null
-      }
+    const { kaggle_ref, file_name, kaggleUsername, kaggleApiKey } = await req.json()
+
+    if (typeof kaggle_ref !== "string" || kaggle_ref.trim() === "") {
+      return NextResponse.json({ error: "Missing or invalid kaggle_ref" }, { status: 400 })
     }
-    // If cache hit, return preview
-    if (cachedPreview) {
-      await mcp_Neon_run_sql({
-        params: {
-          sql: `INSERT INTO audit_trail (event_type, event_data, created_at) VALUES ($1, $2, $3)` ,
-          projectId: NEON_PROJECT_ID,
-        },
-        args: ["kaggle_file_cache_hit", JSON.stringify({ kaggle_ref, file_name }), now],
-      })
-      return NextResponse.json({ preview: cachedPreview, cached: true })
+    if (typeof file_name !== "string" || file_name.trim() === "") {
+      return NextResponse.json({ error: "Missing or invalid file_name" }, { status: 400 })
     }
-    // Download dataset
+
+    const kaggleClient = createKaggleClient(kaggleUsername, kaggleApiKey)
+
+    if (!kaggleClient.hasCredentials()) {
+      return NextResponse.json({ error: "Kaggle credentials not configured. Add them in Settings." }, { status: 400 })
+    }
+
     const zipBuffer = await kaggleClient.downloadDataset(kaggle_ref)
-    if (!zipBuffer) throw new Error("Failed to download dataset from Kaggle")
-    // Unzip and find the requested file
+    if (!zipBuffer) {
+      return NextResponse.json({ error: `Failed to download dataset "${kaggle_ref}" from Kaggle` }, { status: 502 })
+    }
     const directory = await unzipper.Open.buffer(zipBuffer)
-    const csvFile = directory.files.find((f: any) => f.path === file_name)
-    if (!csvFile) throw new Error("File not found in Kaggle dataset")
-    const csvBuffer = await csvFile.buffer()
-    const records = csv.parse(csvBuffer.toString(), { columns: true })
-    const preview = records.slice(0, 20)
-    // Store in cache
-    const fileHash = crypto.createHash("sha256").update(csvBuffer).digest("hex")
-    await mcp_Neon_run_sql({
-      params: {
-        sql: `INSERT INTO kaggle_file_cache (kaggle_ref, file_name, file_hash, data_preview, created_at) VALUES ($1, $2, $3, $4, $5)` ,
-        projectId: NEON_PROJECT_ID,
-      },
-      args: [kaggle_ref, file_name, fileHash, JSON.stringify(preview), now],
+    const normalizedName = file_name.toLowerCase()
+    const csvFile = directory.files.find((f) => {
+      const basename = f.path.split("/").pop() || f.path
+      return basename.toLowerCase() === normalizedName || f.path.toLowerCase() === normalizedName
     })
-    // Log audit trail
-    await mcp_Neon_run_sql({
-      params: {
-        sql: `INSERT INTO audit_trail (event_type, event_data, created_at) VALUES ($1, $2, $3)` ,
-        projectId: NEON_PROJECT_ID,
-      },
-      args: ["kaggle_file_preview_generated", JSON.stringify({ kaggle_ref, file_name, fileHash }), now],
+    if (!csvFile) {
+      return NextResponse.json({ error: `File "${file_name}" not found in dataset` }, { status: 404 })
+    }
+
+    // Stream directly from zip entry — only parse the first 20 rows
+    const preview = await new Promise<Record<string, string>[]>((resolve, reject) => {
+      const rows: Record<string, string>[] = []
+      const parser = csvFile.stream().pipe(csvParse({ columns: true }))
+      parser.on("data", (row: Record<string, string>) => {
+        rows.push(row)
+        if (rows.length >= 20) parser.destroy()
+      })
+      parser.on("end", () => resolve(rows))
+      parser.on("close", () => resolve(rows))
+      parser.on("error", reject)
     })
-    return NextResponse.json({ preview, cached: false })
+
+    return NextResponse.json({ preview })
   } catch (error) {
     let message = "Unknown error"
     if (error && typeof error === "object" && "message" in error && typeof (error as any).message === "string") {

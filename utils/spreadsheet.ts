@@ -15,6 +15,25 @@ function isNumeric(value: string): boolean {
   return !isNaN(Number.parseFloat(value)) && isFinite(Number(value))
 }
 
+// Safe math expression evaluator — only allows numbers, arithmetic operators, parentheses, and whitespace
+function safeEvaluateMath(expression: string): number {
+  const sanitized = expression.replace(/\s+/g, "")
+  // Only allow digits, decimal points, +, -, *, /, parentheses
+  if (!/^[\d.+\-*/()]+$/.test(sanitized)) {
+    throw new Error("Invalid characters in expression")
+  }
+  // Validate no empty parentheses or double operators
+  if (/\(\)/.test(sanitized) || /[+\-*/]{2,}/.test(sanitized.replace(/[+\-](?=[+\-])/g, ""))) {
+    throw new Error("Invalid expression syntax")
+  }
+  // Use Function with strict validation — expression is guaranteed to only contain math tokens
+  const result = new Function(`"use strict"; return (${sanitized})`)()
+  if (typeof result !== "number" || !isFinite(result)) {
+    throw new Error("Expression did not evaluate to a finite number")
+  }
+  return result
+}
+
 export function evaluateFormula(formula: string, getCellValue: (cellId: string) => CellValue): CellValue {
   if (!formula.startsWith("=")) {
     return formula
@@ -31,9 +50,8 @@ export function evaluateFormula(formula: string, getCellValue: (cellId: string) 
   }
 
   try {
-    // Use Function constructor to safely evaluate the expression
-    const result = new Function(`return ${evaluatedExpression}`)()
-    return isNumeric(result) ? Number(result) : result
+    const result = safeEvaluateMath(evaluatedExpression)
+    return result
   } catch (error) {
     console.error("Error evaluating formula:", error)
     return "#ERROR!"

@@ -2,21 +2,18 @@
 
 import type React from "react"
 
-import { useState, useRef, useEffect } from "react"
-import { useChat } from "ai/react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
-import { ChevronRight, ChevronDown } from "lucide-react"
+import { ChevronRight, ChevronDown, Download, Database, Search, Settings } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { SocialLinks } from "./social-links"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { type RowData, evaluateFormula, getCellId, getCellReference } from "@/utils/spreadsheet"
-import { Download, Database, Search } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { LLMSettingsModal } from "@/components/llm-settings-modal"
-import { Settings } from "lucide-react"
 
 const COLUMNS = 10
 const ROWS = 20
@@ -37,46 +34,25 @@ export function IntelligentSpreadsheet() {
   const [cellCommandModalOpen, setCellCommandModalOpen] = useState(false)
   const [cellCommand, setCellCommand] = useState("")
   const [cellCommandLoading, setCellCommandLoading] = useState(false)
-  const [debugInfo, setDebugInfo] = useState<string>("")
-  const inputRef = useRef<HTMLInputElement>(null)
 
+  const [input, setInput] = useState("")
   const [dataSource, setDataSource] = useState<string>("auto")
   const [isGeneratingData, setIsGeneratingData] = useState(false)
-  const [lastDataQuery, setLastDataQuery] = useState<string>("")
+  const [generationStatus, setGenerationStatus] = useState("")
   const [dataMetadata, setDataMetadata] = useState<any>(null)
-  const [isPreviewMode, setIsPreviewMode] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [examplePromptsExpanded, setExamplePromptsExpanded] = useState(false)
   const [llmSettings, setLLMSettings] = useState(() => {
     if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("llmSettings")
-      return saved ? JSON.parse(saved) : null
+      try {
+        const saved = localStorage.getItem("llmSettings")
+        return saved ? JSON.parse(saved) : null
+      } catch {
+        localStorage.removeItem("llmSettings")
+        return null
+      }
     }
     return null
-  })
-
-  const { messages, input, handleInputChange, handleSubmit, isLoading, setInput, error } = useChat({
-    api: "/api/spreadsheet",
-    onResponse: (response) => {
-      if (!response.ok) {
-        toast.error("Failed to process command")
-      }
-    },
-    onFinish: (message) => {
-      try {
-        const action = JSON.parse(message.content)
-        if (Object.keys(action).length === 0) {
-          throw new Error("Empty response from AI")
-        }
-        executeAction(action)
-        if (action.type !== "ERROR") {
-          toast.success("Command executed successfully")
-        }
-      } catch (error) {
-        console.error("Failed to parse AI response:", error)
-        toast.error(`Failed to parse AI response: ${error instanceof Error ? error.message : String(error)}`)
-      }
-    },
   })
 
   const getCellValue = (cellReference: string): string | number => {
@@ -87,7 +63,6 @@ export function IntelligentSpreadsheet() {
   }
 
   const executeAction = (action: { type: string; payload: any }) => {
-    console.log("Executing action:", action) // Debug log
     switch (action.type) {
       case "EDIT_CELL":
         setRows((prevRows) =>
@@ -157,83 +132,68 @@ export function IntelligentSpreadsheet() {
     setCellCommand(cell?.formula || cell?.value?.toString() || "")
   }
 
-  const handleCellChange = (cellId: string, value: string) => {
-    setRows((prevRows) =>
-      prevRows.map((row) => ({
-        ...row,
-        cells: row.cells.map((cell) => (cell.id === cellId ? { ...cell, value, formula: value } : cell)),
-      })),
-    )
-  }
-
-  const handleMainInputSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    handleSubmit(e)
-  }
-
   const handleCellCommandSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (activeCell) {
-      const cellReference = getCellReference(activeCell)
-      const command = `For cell ${cellReference}: ${cellCommand}`
+    if (!activeCell) return
 
-      setCellCommandLoading(true)
-      setDebugInfo("")
+    if (!cellCommand.trim()) {
+      toast.error("Please enter a command or value")
+      return
+    }
 
-      try {
-        const response = await fetch("/api/cell-command", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ command }),
-        })
+    const cellReference = getCellReference(activeCell)
 
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`)
-        }
+    // Handle direct value/formula entry without AI
+    if (!cellCommand.startsWith("=") && !cellCommand.match(/^(set|change|make|update|calculate|fill)/i)) {
+      const [rowId] = activeCell.split("-")
+      executeAction({ type: "EDIT_CELL", payload: { rowId, cellId: activeCell, value: cellCommand } })
+      toast.success(`Cell ${cellReference} updated`)
+      setCellCommandModalOpen(false)
+      setCellCommand("")
+      return
+    }
 
-        const responseText = await response.text()
-        setDebugInfo(`Raw response: ${responseText}`)
+    const command = `For cell ${cellReference}: ${cellCommand}`
+    setCellCommandLoading(true)
 
-        try {
-          const action = JSON.parse(responseText)
-          if (action.type && action.payload) {
-            executeAction(action)
-            toast.success("Cell command executed successfully")
-          } else {
-            throw new Error("Invalid response format from server")
-          }
-        } catch (parseError) {
-          throw new Error(
-            `Failed to parse response: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
-          )
-        }
-      } catch (error) {
-        console.error("Failed to execute cell command:", error)
-        setDebugInfo(`Error: ${error instanceof Error ? error.message : String(error)}`)
-        toast.error(`Failed to execute cell command: ${error instanceof Error ? error.message : String(error)}`)
-      } finally {
-        setCellCommandLoading(false)
-        setCellCommandModalOpen(false)
-        setCellCommand("")
+    try {
+      const response = await fetch("/api/cell-command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command }),
+      })
+
+      const data = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(data?.payload?.message || `Server error (${response.status})`)
       }
+
+      if (data?.type === "ERROR") {
+        toast.error(data.payload?.message || "Command failed")
+      } else if (data?.type && data?.payload) {
+        executeAction(data)
+        toast.success(`Cell ${cellReference} updated successfully`)
+      } else {
+        toast.error("Unexpected response from server")
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Unknown error"
+      toast.error(`Cell command failed: ${msg}`)
+    } finally {
+      setCellCommandLoading(false)
+      setCellCommandModalOpen(false)
+      setCellCommand("")
     }
   }
 
-  useEffect(() => {
-    if (activeCell && inputRef.current) {
-      inputRef.current.focus()
-    }
-  }, [activeCell])
-
-  useEffect(() => {
-    if (error) {
-      toast.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  }, [error])
-
   const exportToCSV = () => {
+    const hasData = rows.some((row) => row.cells.some((cell) => cell.value !== ""))
+    if (!hasData) {
+      toast.error("Nothing to export — generate or enter some data first")
+      return
+    }
+
     const csvContent = rows.map((row) => row.cells.map((cell) => `"${cell.value}"`).join(",")).join("\n")
 
     const blob = new Blob([csvContent], { type: "text/csv" })
@@ -243,10 +203,16 @@ export function IntelligentSpreadsheet() {
     a.download = "spreadsheet.csv"
     a.click()
     window.URL.revokeObjectURL(url)
-    toast.success("Exported to CSV successfully")
+    toast.success("CSV file downloaded")
   }
 
   const exportToExcel = async () => {
+    const hasData = rows.some((row) => row.cells.some((cell) => cell.value !== ""))
+    if (!hasData) {
+      toast.error("Nothing to export — generate or enter some data first")
+      return
+    }
+
     try {
       const response = await fetch("/api/export/excel", {
         method: "POST",
@@ -254,7 +220,10 @@ export function IntelligentSpreadsheet() {
         body: JSON.stringify({ rows }),
       })
 
-      if (!response.ok) throw new Error("Export failed")
+      if (!response.ok) {
+        const err = await response.json().catch(() => null)
+        throw new Error(err?.error || `Server error (${response.status})`)
+      }
 
       const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)
@@ -263,18 +232,33 @@ export function IntelligentSpreadsheet() {
       a.download = "spreadsheet.xlsx"
       a.click()
       window.URL.revokeObjectURL(url)
-      toast.success("Exported to Excel successfully")
+      toast.success("Excel file downloaded")
     } catch (error) {
-      toast.error("Failed to export to Excel")
+      const msg = error instanceof Error ? error.message : "Unknown error"
+      toast.error(`Excel export failed: ${msg}`)
     }
   }
 
   const handleDataGeneration = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!input.trim()) {
+      toast.error("Please enter a data request before generating")
+      return
+    }
+
+    if (!llmSettings?.apiKey) {
+      toast.error("No API key configured. Open Settings to add your AI provider key.")
+      setSettingsOpen(true)
+      return
+    }
+
     setIsGeneratingData(true)
-    setLastDataQuery(input)
+    setGenerationStatus("Analyzing your request...")
 
     try {
+      setGenerationStatus("Generating data — this may take a few seconds...")
+
       const response = await fetch("/api/data-generation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -285,27 +269,49 @@ export function IntelligentSpreadsheet() {
           userProvider: llmSettings?.provider,
           userModel: llmSettings?.model,
           userApiKey: llmSettings?.apiKey,
+          kaggleUsername: llmSettings?.kaggleUsername,
+          kaggleApiKey: llmSettings?.kaggleApiKey,
         }),
       })
 
-      if (!response.ok) throw new Error("Data generation failed")
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => null)
+        const serverMsg = errorBody?.action?.payload?.message
+        throw new Error(serverMsg || `Server error (${response.status})`)
+      }
 
       const result = await response.json()
+
+      if (result.action?.type === "ERROR") {
+        toast.error(result.action.payload.message || "Data generation failed")
+        return
+      }
+
       if (result.action) {
         executeAction(result.action)
         setDataMetadata(result.metadata)
-        setIsPreviewMode(result.metadata?.isPreview || false)
-        toast.success(
-          result.metadata?.isPreview
-            ? "Data preview generated successfully (20 rows shown)"
-            : "Data generated successfully",
-        )
+
+        const source = result.metadata?.source
+        const count = result.metadata?.recordCount || 0
+        const sourceLabel =
+          source === "kaggle" ? "Kaggle" : source === "predefined" ? "built-in examples" : "AI generation"
+        toast.success(`Loaded ${count} rows from ${sourceLabel}${result.metadata?.isPreview ? " (preview)" : ""}`)
       }
     } catch (error) {
-      console.error("Data generation error:", error)
-      toast.error("Failed to generate data")
+      const msg = error instanceof Error ? error.message : "Unknown error"
+
+      if (msg.includes("API key") || msg.includes("auth") || msg.includes("401")) {
+        toast.error("Authentication failed. Check your API key in Settings.")
+      } else if (msg.includes("rate") || msg.includes("429")) {
+        toast.error("Rate limit reached. Wait a moment and try again.")
+      } else if (msg.includes("fetch") || msg.includes("network") || msg.includes("Failed to fetch")) {
+        toast.error("Network error. Check your connection and try again.")
+      } else {
+        toast.error(`Data generation failed: ${msg}`)
+      }
     } finally {
       setIsGeneratingData(false)
+      setGenerationStatus("")
     }
   }
 
@@ -372,16 +378,16 @@ export function IntelligentSpreadsheet() {
         <form onSubmit={handleDataGeneration} className="flex gap-2">
           <Input
             value={input}
-            onChange={handleInputChange}
+            onChange={(e) => setInput(e.target.value)}
             placeholder="Enter your data request (e.g., 'Netflix movies with IMDB_ID, title, genre, and release year')"
             className="flex-grow"
-            disabled={isLoading || isGeneratingData}
+            disabled={isGeneratingData}
           />
-          <Button type="submit" disabled={isLoading || isGeneratingData}>
+          <Button type="submit" disabled={isGeneratingData || !input.trim()}>
             {isGeneratingData ? (
               <>
                 <Database className="w-4 h-4 mr-2 animate-spin" />
-                Generating...
+                {generationStatus || "Generating..."}
               </>
             ) : (
               <>
@@ -526,12 +532,6 @@ export function IntelligentSpreadsheet() {
         </DialogContent>
       </Dialog>
 
-      {debugInfo && (
-        <div className="mt-4 p-4 bg-gray-100 rounded-lg">
-          <h3 className="text-lg font-semibold mb-2">Debug Information:</h3>
-          <pre className="whitespace-pre-wrap">{debugInfo}</pre>
-        </div>
-      )}
     </motion.div>
   )
 }

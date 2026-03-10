@@ -13,6 +13,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { motion } from "framer-motion"
+import { toast } from "sonner"
 
 const PROVIDERS = [
   { value: "openai", label: "OpenAI" },
@@ -20,91 +21,48 @@ const PROVIDERS = [
   { value: "gemini", label: "Google Gemini" },
   { value: "groq", label: "Groq" },
   { value: "cohere", label: "Cohere" },
-  { value: "mistral", label: "Mistral AI" },
-  { value: "perplexity", label: "Perplexity" },
-  { value: "together", label: "Together AI" },
-  { value: "replicate", label: "Replicate" },
-  { value: "huggingface", label: "Hugging Face" },
+  { value: "deepseek", label: "DeepSeek" },
 ]
 
 const MODELS: Record<string, { value: string; label: string }[]> = {
   openai: [
-    { value: "gpt-4o", label: "GPT-4o (Latest)" },
+    { value: "gpt-4.1", label: "GPT-4.1 (Latest)" },
+    { value: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
+    { value: "gpt-4.1-nano", label: "GPT-4.1 Nano" },
+    { value: "o3-mini", label: "o3-mini (Reasoning)" },
+    { value: "gpt-4o", label: "GPT-4o" },
     { value: "gpt-4o-mini", label: "GPT-4o Mini" },
-    { value: "gpt-4-turbo", label: "GPT-4 Turbo" },
-    { value: "gpt-4", label: "GPT-4" },
-    { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo" },
-    { value: "o1-preview", label: "O1 Preview (Reasoning)" },
-    { value: "o1-mini", label: "O1 Mini (Reasoning)" },
     { value: "custom", label: "Custom..." },
   ],
   anthropic: [
-    { value: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet (Latest)" },
-    { value: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku" },
-    { value: "claude-3-opus-20240229", label: "Claude 3 Opus" },
-    { value: "claude-3-sonnet-20240229", label: "Claude 3 Sonnet" },
-    { value: "claude-3-haiku-20240307", label: "Claude 3 Haiku" },
+    { value: "claude-sonnet-4-6-20250610", label: "Claude Sonnet 4.6 (Latest)" },
+    { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
+    { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
+    { value: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet" },
     { value: "custom", label: "Custom..." },
   ],
   gemini: [
-    { value: "gemini-2.0-flash-exp", label: "Gemini 2.0 Flash (Experimental)" },
-    { value: "gemini-1.5-pro-latest", label: "Gemini 1.5 Pro (Latest)" },
-    { value: "gemini-1.5-flash-latest", label: "Gemini 1.5 Flash (Latest)" },
-    { value: "gemini-1.5-flash-8b-latest", label: "Gemini 1.5 Flash 8B" },
-    { value: "gemini-1.0-pro", label: "Gemini 1.0 Pro" },
+    { value: "gemini-2.5-pro-preview-06-05", label: "Gemini 2.5 Pro (Latest)" },
+    { value: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash" },
+    { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
     { value: "custom", label: "Custom..." },
   ],
   groq: [
     { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70B Versatile" },
-    { value: "llama-3.1-70b-versatile", label: "Llama 3.1 70B Versatile" },
     { value: "llama-3.1-8b-instant", label: "Llama 3.1 8B Instant" },
+    { value: "deepseek-r1-distill-llama-70b", label: "DeepSeek R1 Distill 70B" },
     { value: "mixtral-8x7b-32768", label: "Mixtral 8x7B 32K" },
-    { value: "gemma2-9b-it", label: "Gemma 2 9B IT" },
     { value: "custom", label: "Custom..." },
   ],
   cohere: [
+    { value: "command-a-03-2025", label: "Command A (Latest)" },
     { value: "command-r-plus-08-2024", label: "Command R+ (Aug 2024)" },
     { value: "command-r-08-2024", label: "Command R (Aug 2024)" },
-    { value: "command-r-plus", label: "Command R+" },
-    { value: "command-r", label: "Command R" },
-    { value: "command", label: "Command" },
-    { value: "command-light", label: "Command Light" },
     { value: "custom", label: "Custom..." },
   ],
-  mistral: [
-    { value: "mistral-large-latest", label: "Mistral Large (Latest)" },
-    { value: "mistral-medium-latest", label: "Mistral Medium (Latest)" },
-    { value: "mistral-small-latest", label: "Mistral Small (Latest)" },
-    { value: "codestral-latest", label: "Codestral (Latest)" },
-    { value: "mixtral-8x7b-instruct", label: "Mixtral 8x7B Instruct" },
-    { value: "custom", label: "Custom..." },
-  ],
-  perplexity: [
-    { value: "llama-3.1-sonar-large-128k-online", label: "Llama 3.1 Sonar Large 128K Online" },
-    { value: "llama-3.1-sonar-small-128k-online", label: "Llama 3.1 Sonar Small 128K Online" },
-    { value: "llama-3.1-sonar-large-128k-chat", label: "Llama 3.1 Sonar Large 128K Chat" },
-    { value: "llama-3.1-sonar-small-128k-chat", label: "Llama 3.1 Sonar Small 128K Chat" },
-    { value: "custom", label: "Custom..." },
-  ],
-  together: [
-    { value: "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo", label: "Llama 3.1 70B Instruct Turbo" },
-    { value: "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo", label: "Llama 3.1 8B Instruct Turbo" },
-    { value: "mistralai/Mixtral-8x7B-Instruct-v0.1", label: "Mixtral 8x7B Instruct" },
-    { value: "Qwen/Qwen2.5-72B-Instruct-Turbo", label: "Qwen 2.5 72B Instruct Turbo" },
-    { value: "custom", label: "Custom..." },
-  ],
-  replicate: [
-    { value: "meta/meta-llama-3.1-405b-instruct", label: "Llama 3.1 405B Instruct" },
-    { value: "meta/meta-llama-3.1-70b-instruct", label: "Llama 3.1 70B Instruct" },
-    { value: "meta/meta-llama-3.1-8b-instruct", label: "Llama 3.1 8B Instruct" },
-    { value: "mistralai/mixtral-8x7b-instruct-v0.1", label: "Mixtral 8x7B Instruct" },
-    { value: "custom", label: "Custom..." },
-  ],
-  huggingface: [
-    { value: "meta-llama/Meta-Llama-3.1-70B-Instruct", label: "Llama 3.1 70B Instruct" },
-    { value: "meta-llama/Meta-Llama-3.1-8B-Instruct", label: "Llama 3.1 8B Instruct" },
-    { value: "mistralai/Mixtral-8x7B-Instruct-v0.1", label: "Mixtral 8x7B Instruct" },
-    { value: "microsoft/DialoGPT-large", label: "DialoGPT Large" },
+  deepseek: [
+    { value: "deepseek-chat", label: "DeepSeek V3 (Latest)" },
+    { value: "deepseek-reasoner", label: "DeepSeek R1 (Reasoning)" },
     { value: "custom", label: "Custom..." },
   ],
 }
@@ -118,91 +76,164 @@ export function LLMSettingsModal({
   const [model, setModel] = useState(MODELS["openai"][0].value)
   const [apiKey, setApiKey] = useState("")
   const [customModel, setCustomModel] = useState("")
+  const [kaggleUsername, setKaggleUsername] = useState("")
+  const [kaggleApiKey, setKaggleApiKey] = useState("")
+  const [hydrated, setHydrated] = useState(false)
 
   // Load from localStorage on mount
   useEffect(() => {
-    const saved = localStorage.getItem("llmSettings")
-    if (saved) {
-      const parsed = JSON.parse(saved)
-      setProvider(parsed.provider || "openai")
-      setModel(parsed.model || MODELS[parsed.provider || "openai"][0].value)
-      setApiKey(parsed.apiKey || "")
-      setCustomModel(parsed.customModel || "")
+    try {
+      const saved = localStorage.getItem("llmSettings")
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        // Validate provider against known list
+        const validProvider = PROVIDERS.some((p) => p.value === parsed.provider)
+          ? parsed.provider
+          : "openai"
+        setProvider(validProvider)
+        // Validate model against known models for that provider
+        const providerModels = MODELS[validProvider] || []
+        const modelIsValid = providerModels.some((m) => m.value === parsed.model)
+        setModel(modelIsValid ? parsed.model : providerModels[0]?.value || "custom")
+        setApiKey(parsed.apiKey || "")
+        setCustomModel(parsed.customModel || "")
+        setKaggleUsername(parsed.kaggleUsername || "")
+        setKaggleApiKey(parsed.kaggleApiKey || "")
+      }
+    } catch {
+      localStorage.removeItem("llmSettings")
     }
+    setHydrated(true)
   }, [])
 
-  // Update model when provider changes
+  // Update model when provider changes (skip during initial hydration)
   useEffect(() => {
-    setModel(MODELS[provider][0].value)
+    if (!hydrated) return
+    const providerModels = MODELS[provider]
+    if (providerModels) {
+      setModel(providerModels[0].value)
+    }
     setCustomModel("")
-  }, [provider])
+  }, [provider, hydrated])
 
   const handleSave = () => {
-    const settings = { provider, model: model === "custom" ? customModel : model, apiKey }
+    if (!apiKey.trim()) {
+      toast.error("API key is required")
+      return
+    }
+
+    const settings = {
+      provider,
+      model: model === "custom" ? customModel : model,
+      apiKey,
+      kaggleUsername,
+      kaggleApiKey,
+    }
     localStorage.setItem("llmSettings", JSON.stringify(settings))
     if (onSave) onSave(settings)
     onOpenChange(false)
+
+    const providerLabel = PROVIDERS.find((p) => p.value === provider)?.label || provider
+    toast.success(`Settings saved — using ${providerLabel}`)
   }
+
+  const providerModels = MODELS[provider] || [{ value: "custom", label: "Custom..." }]
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <DialogHeader>
-            <DialogTitle>AI Provider Settings</DialogTitle>
+            <DialogTitle>Settings</DialogTitle>
             <DialogDescription>
-              Choose your preferred AI provider, model, and enter your API key. Your settings are stored locally and
-              never sent to our servers.
+              Configure your AI provider and Kaggle credentials. All settings are stored locally in your browser.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 mt-4">
-            <div>
-              <label className="block mb-1 font-medium">Provider</label>
-              <Select value={provider} onValueChange={setProvider}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select provider" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PROVIDERS.map((p) => (
-                    <SelectItem key={p.value} value={p.value}>
-                      {p.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="block mb-1 font-medium">Model</label>
-              <Select value={model} onValueChange={setModel}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {MODELS[provider].map((m) => (
-                    <SelectItem key={m.value} value={m.value}>
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {model === "custom" && (
+          <div className="space-y-6 mt-4">
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">AI Provider</h3>
+              <div>
+                <label className="block mb-1 font-medium">Provider</label>
+                <Select value={provider} onValueChange={setProvider}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PROVIDERS.map((p) => (
+                      <SelectItem key={p.value} value={p.value}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="block mb-1 font-medium">Model</label>
+                <Select value={model} onValueChange={setModel}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {providerModels.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {model === "custom" && (
+                  <Input
+                    className="mt-2"
+                    value={customModel}
+                    onChange={(e) => setCustomModel(e.target.value)}
+                    placeholder="Enter custom model name"
+                  />
+                )}
+              </div>
+              <div>
+                <label className="block mb-1 font-medium">API Key</label>
                 <Input
-                  className="mt-2"
-                  value={customModel}
-                  onChange={(e) => setCustomModel(e.target.value)}
-                  placeholder="Enter custom model name"
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="Enter your API key"
+                  autoComplete="off"
                 />
-              )}
+              </div>
             </div>
-            <div>
-              <label className="block mb-1 font-medium">API Key</label>
-              <Input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Enter your API key"
-                autoComplete="off"
-              />
+
+            <div className="border-t pt-4 space-y-4">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Kaggle (Optional)</h3>
+              <p className="text-sm text-muted-foreground">
+                Add your Kaggle credentials to search and download real datasets. Get your API key from{" "}
+                <a
+                  href="https://www.kaggle.com/settings/account"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline"
+                >
+                  kaggle.com/settings/account
+                </a>.
+              </p>
+              <div>
+                <label className="block mb-1 font-medium">Kaggle Username</label>
+                <Input
+                  value={kaggleUsername}
+                  onChange={(e) => setKaggleUsername(e.target.value)}
+                  placeholder="your-kaggle-username"
+                  autoComplete="off"
+                />
+              </div>
+              <div>
+                <label className="block mb-1 font-medium">Kaggle API Key</label>
+                <Input
+                  type="password"
+                  value={kaggleApiKey}
+                  onChange={(e) => setKaggleApiKey(e.target.value)}
+                  placeholder="Enter your Kaggle API key"
+                  autoComplete="off"
+                />
+              </div>
             </div>
           </div>
           <DialogFooter className="mt-6">

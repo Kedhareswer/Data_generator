@@ -2,6 +2,9 @@
   "name": "my-v0-project",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "build": "next build",
     "dev": "next dev",
@@ -10,7 +13,6 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "latest",
-    "@aws-sdk/client-s3": "^3.850.0",
     "@emotion/is-prop-valid": "latest",
     "@google/generative-ai": "latest",
     "@hookform/resolvers": "^3.9.1",
@@ -47,7 +49,6 @@
     "clsx": "^2.1.1",
     "cmdk": "latest",
     "cohere-ai": "latest",
-    "crypto": "latest",
     "csv-parse": "latest",
     "date-fns": "4.1.0",
     "embla-carousel-react": "latest",
@@ -55,7 +56,7 @@
     "geist": "latest",
     "input-otp": "latest",
     "lucide-react": "^0.454.0",
-    "next": "15.2.4",
+    "next": "15.2.9",
     "next-themes": "latest",
     "react": "^19",
     "react-day-picker": "latest",

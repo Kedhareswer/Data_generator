@@ -17,12 +17,25 @@ export class KaggleIntegration {
   private apiKey: string
   private username: string
 
-  constructor() {
-    this.apiKey = process.env.KAGGLE_API_KEY || ""
-    this.username = process.env.KAGGLE_USERNAME || ""
+  constructor(username?: string, apiKey?: string) {
+    this.username = username || process.env.KAGGLE_USERNAME || ""
+    this.apiKey = apiKey || process.env.KAGGLE_API_KEY || ""
+  }
+
+  hasCredentials(): boolean {
+    return Boolean(this.username && this.apiKey)
+  }
+
+  private getAuthHeader(): string {
+    const credentials = Buffer.from(`${this.username}:${this.apiKey}`).toString("base64")
+    return `Basic ${credentials}`
   }
 
   async searchDatasets(query: string, category?: string): Promise<KaggleSearchResult> {
+    if (!this.hasCredentials()) {
+      return { datasets: [], totalCount: 0 }
+    }
+
     try {
       const searchParams = new URLSearchParams({
         search: query,
@@ -36,7 +49,7 @@ export class KaggleIntegration {
 
       const response = await fetch(`https://www.kaggle.com/api/v1/datasets/list?${searchParams}`, {
         headers: {
-          Authorization: `Bearer ${this.apiKey}`,
+          Authorization: this.getAuthHeader(),
           "Content-Type": "application/json",
         },
       })
@@ -57,30 +70,30 @@ export class KaggleIntegration {
   }
 
   async getDatasetMetadata(datasetRef: string) {
-    try {
-      const response = await fetch(`https://www.kaggle.com/api/v1/datasets/metadata/${datasetRef}`, {
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-      })
+    if (!this.hasCredentials()) return null
 
-      if (!response.ok) {
-        throw new Error(`Kaggle API error: ${response.statusText}`)
-      }
+    const response = await fetch(`https://www.kaggle.com/api/v1/datasets/metadata/${datasetRef}`, {
+      headers: {
+        Authorization: this.getAuthHeader(),
+        "Content-Type": "application/json",
+      },
+    })
 
-      return await response.json()
-    } catch (error) {
-      console.error("Kaggle metadata error:", error)
-      return null
+    if (!response.ok) {
+      const detail = await response.text().catch(() => response.statusText)
+      throw new Error(`Kaggle metadata API error (${response.status}): ${detail}`)
     }
+
+    return await response.json()
   }
 
   async downloadDataset(datasetRef: string): Promise<Buffer | null> {
+    if (!this.hasCredentials()) return null
+
     try {
       const response = await fetch(`https://www.kaggle.com/api/v1/datasets/download/${datasetRef}`, {
         headers: {
-          Authorization: `Bearer ${this.apiKey}`,
+          Authorization: this.getAuthHeader(),
         },
       })
 
@@ -96,4 +109,6 @@ export class KaggleIntegration {
   }
 }
 
-export const kaggleClient = new KaggleIntegration()
+export function createKaggleClient(username?: string, apiKey?: string): KaggleIntegration {
+  return new KaggleIntegration(username, apiKey)
+}

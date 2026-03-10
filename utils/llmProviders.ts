@@ -2,38 +2,27 @@ import { z } from "zod"
 import { GoogleGenerativeAI } from "@google/generative-ai" // Gemini support
 import { CohereClient } from "cohere-ai"
 
-// Example: import { openai } from "@ai-sdk/openai"
-// Add imports for other SDKs/providers as needed
-
 // --- Provider wrappers ---
 
 async function tryOpenAI({ prompt, schema, userModel, userApiKey }: { prompt: string; schema: z.ZodTypeAny; userModel?: string; userApiKey?: string }) {
-  // If userApiKey is provided, temporarily override process.env.OPENAI_API_KEY
-  let restoreKey: string | undefined
-  if (userApiKey) {
-    restoreKey = process.env.OPENAI_API_KEY
-    process.env.OPENAI_API_KEY = userApiKey
-  }
-  try {
-    if (!process.env.OPENAI_API_KEY) throw new Error("OpenAI API key missing")
-    const { openai } = await import("@ai-sdk/openai")
-    const { generateObject } = await import("ai")
-    return (
-      await generateObject({
-        model: openai(userModel || "gpt-4o"),
-        schema,
-        prompt,
-      })
-    ).object
-  } finally {
-    if (userApiKey) process.env.OPENAI_API_KEY = restoreKey
-  }
+  const apiKey = userApiKey || process.env.OPENAI_API_KEY
+  if (!apiKey) throw new Error("OpenAI API key missing")
+  const { createOpenAI } = await import("@ai-sdk/openai")
+  const { generateObject } = await import("ai")
+  const openai = createOpenAI({ apiKey })
+  return (
+    await generateObject({
+      model: openai(userModel || "gpt-4.1"),
+      schema,
+      prompt,
+    })
+  ).object
 }
 
 async function tryGroq({ prompt, schema, userModel, userApiKey }: { prompt: string; schema: z.ZodTypeAny; userModel?: string; userApiKey?: string }) {
   const apiKey = userApiKey || process.env.GROQ_API_KEY
   if (!apiKey) throw new Error("Groq API key missing")
-  const model = userModel || "llama3-70b-8192"
+  const model = userModel || "llama-3.3-70b-versatile"
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -61,8 +50,8 @@ async function tryGroq({ prompt, schema, userModel, userApiKey }: { prompt: stri
     const parsed = JSON.parse(stripCodeBlock(content))
     return schema.parse(parsed)
   } catch (err) {
-    console.error("[Groq] Error parsing or validating response:", err)
-    throw err
+    console.error("[Groq] Failed to parse JSON response (length:", content.length, ")")
+    throw new Error("Groq returned invalid JSON response")
   }
 }
 
@@ -70,7 +59,7 @@ async function tryCohere({ prompt, schema, userModel, userApiKey }: { prompt: st
   const apiKey = userApiKey || process.env.COHERE_API_KEY
   if (!apiKey) throw new Error("Cohere API key missing")
   const cohere = new CohereClient({ token: apiKey })
-  const model = userModel || "command-r-plus"
+  const model = userModel || "command-a-03-2025"
   const response = await cohere.chat({
     model,
     message: prompt,
@@ -83,39 +72,124 @@ async function tryCohere({ prompt, schema, userModel, userApiKey }: { prompt: st
     const parsed = JSON.parse(stripCodeBlock(content))
     return schema.parse(parsed)
   } catch (err) {
-    console.error("[Cohere] Error parsing or validating response:", err)
-    throw err
+    console.error("[Cohere] Failed to parse JSON response (length:", content.length, ")")
+    throw new Error("Cohere returned invalid JSON response")
   }
 }
 
-async function tryCerebus({ prompt, schema, userModel, userApiKey }: { prompt: string; schema: z.ZodTypeAny; userModel?: string; userApiKey?: string }) {
-  const apiKey = userApiKey || process.env.CEREBUS_API_KEY
-  if (!apiKey) throw new Error("Cerebus API key missing")
-  // TODO: Add actual Cerebus SDK/model call here
-  throw new Error("Cerebus provider not implemented yet")
+async function tryAnthropic({ prompt, schema, userModel, userApiKey }: { prompt: string; schema: z.ZodTypeAny; userModel?: string; userApiKey?: string }) {
+  const apiKey = userApiKey || process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error("Anthropic API key missing")
+  // Allow env override for default model; fall back to latest dated ID
+  const model = userModel || process.env.ANTHROPIC_DEFAULT_MODEL || "claude-sonnet-4-6-20250610"
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 2048,
+      messages: [
+        { role: "user", content: prompt },
+      ],
+    }),
+  })
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(`[Anthropic Error]: ${response.status} ${response.statusText} - ${errText}`)
+  }
+  const data = await response.json()
+  const content = data.content?.[0]?.text
+  if (!content) throw new Error("Anthropic: No content in response")
+  try {
+    const parsed = JSON.parse(stripCodeBlock(content))
+    return schema.parse(parsed)
+  } catch (err) {
+    console.error("[Anthropic] Failed to parse JSON response (length:", content.length, ")")
+    throw new Error("Anthropic returned invalid JSON response")
+  }
 }
 
 async function tryGemini({ prompt, schema, userModel, userApiKey }: { prompt: string; schema: z.ZodTypeAny; userModel?: string; userApiKey?: string }) {
-  console.log("[Gemini] Called with prompt:", prompt)
   const apiKey = userApiKey || process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error("Gemini API key missing")
   const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({ model: userModel || "gemini-pro" })
-  const result = await model.generateContent(prompt)
-  const text = await result.response.text()
-  console.log("[Gemini] Raw response:", text)
+  const modelName = userModel || "gemini-2.0-flash"
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0.7,
+      maxOutputTokens: 2048,
+    },
+  })
+  let result
   try {
-    const parsed = JSON.parse(text)
-    const validated = schema.parse(parsed)
-    return validated
+    result = await model.generateContent(prompt)
+  } catch (err: any) {
+    const msg = err?.message || String(err)
+    if (msg.includes("not found") || msg.includes("404")) {
+      throw new Error(`Gemini model "${modelName}" not found. Try "gemini-2.0-flash" or "gemini-2.5-flash-preview-05-20" instead.`)
+    }
+    throw new Error(`[Gemini Error]: ${msg}`)
+  }
+  const text = result.response.text()
+  if (!text) throw new Error("Gemini: Empty response")
+  try {
+    const parsed = JSON.parse(stripCodeBlock(text))
+    return schema.parse(parsed)
   } catch (err) {
-    console.error("[Gemini] Error parsing or validating response:", err)
-    throw err
+    console.error("[Gemini] Failed to parse JSON response (length:", text.length, ")")
+    throw new Error(`Gemini returned invalid JSON. Model: ${modelName}`)
+  }
+}
+
+async function tryDeepSeek({ prompt, schema, userModel, userApiKey }: { prompt: string; schema: z.ZodTypeAny; userModel?: string; userApiKey?: string }) {
+  const apiKey = userApiKey || process.env.DEEPSEEK_API_KEY
+  if (!apiKey) throw new Error("DeepSeek API key missing")
+  const model = userModel || "deepseek-chat"
+  const response = await fetch("https://api.deepseek.com/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: "You are a helpful assistant. Respond ONLY with valid JSON." },
+        { role: "user", content: prompt },
+      ],
+      max_tokens: 2048,
+      temperature: 0.7,
+    }),
+  })
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(`[DeepSeek Error]: ${response.status} ${response.statusText} - ${errText}`)
+  }
+  const data = await response.json()
+  const content = data.choices?.[0]?.message?.content
+  if (!content) throw new Error("DeepSeek: No content in response")
+  try {
+    const parsed = JSON.parse(stripCodeBlock(content))
+    return schema.parse(parsed)
+  } catch (err) {
+    console.error("[DeepSeek] Failed to parse JSON response (length:", content.length, ")")
+    throw new Error("DeepSeek returned invalid JSON response")
   }
 }
 
 function stripCodeBlock(text: string): string {
-  return text.replace(/^```json[\s\r\n]*|```$/g, "").trim()
+  let cleaned = text.trim()
+  // Remove opening code fence (case-insensitive, handles CRLF)
+  cleaned = cleaned.replace(/^```(?:json)?\s*\r?\n?/i, "")
+  // Remove closing code fence (handles CRLF)
+  cleaned = cleaned.replace(/\r?\n?```\s*$/, "")
+  return cleaned.trim()
 }
 
 // --- Main auto-selection logic ---
@@ -136,22 +210,25 @@ export async function callLLM({ prompt, schema, userProvider, userModel, userApi
   const providerMap: ProviderMap = {
     openai: tryOpenAI,
     gemini: tryGemini,
-    anthropic: tryCerebus,
+    anthropic: tryAnthropic,
     groq: tryGroq,
     cohere: tryCohere,
-    cerebus: tryCerebus,
+    deepseek: tryDeepSeek,
   }
-  if (userProvider && Object.prototype.hasOwnProperty.call(providerMap, userProvider)) {
+  if (userProvider) {
+    if (!Object.prototype.hasOwnProperty.call(providerMap, userProvider)) {
+      throw new Error(`Unsupported provider "${userProvider}". Supported: ${Object.keys(providerMap).join(", ")}`)
+    }
     return await providerMap[userProvider]({ prompt, schema, userModel, userApiKey })
   }
-  // fallback: try all
-  const providers = [tryGroq, tryCerebus, tryCohere, tryGemini, tryOpenAI]
+  // No provider specified — fallback: try all using only env-configured keys and default models
+  const providers = [tryGroq, tryAnthropic, tryDeepSeek, tryCohere, tryGemini, tryOpenAI]
   for (const provider of providers) {
     try {
-      const result = await provider({ prompt, schema, userModel, userApiKey })
+      const result = await provider({ prompt, schema })
       if (result) return result
-    } catch (e) {
-      // Optionally log: console.warn(`Provider failed: ${e}`)
+    } catch {
+      // Provider not configured or failed — try next
     }
   }
   throw new Error("No available LLM provider succeeded.")
