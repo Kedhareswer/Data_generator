@@ -20,7 +20,7 @@ async function tryOpenAI({ prompt, schema, userModel, userApiKey }: { prompt: st
     const { generateObject } = await import("ai")
     return (
       await generateObject({
-        model: openai(userModel || "gpt-4o"),
+        model: openai(userModel || "gpt-4.1"),
         schema,
         prompt,
       })
@@ -33,7 +33,7 @@ async function tryOpenAI({ prompt, schema, userModel, userApiKey }: { prompt: st
 async function tryGroq({ prompt, schema, userModel, userApiKey }: { prompt: string; schema: z.ZodTypeAny; userModel?: string; userApiKey?: string }) {
   const apiKey = userApiKey || process.env.GROQ_API_KEY
   if (!apiKey) throw new Error("Groq API key missing")
-  const model = userModel || "llama3-70b-8192"
+  const model = userModel || "llama-3.3-70b-versatile"
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -70,7 +70,7 @@ async function tryCohere({ prompt, schema, userModel, userApiKey }: { prompt: st
   const apiKey = userApiKey || process.env.COHERE_API_KEY
   if (!apiKey) throw new Error("Cohere API key missing")
   const cohere = new CohereClient({ token: apiKey })
-  const model = userModel || "command-r-plus"
+  const model = userModel || "command-a-03-2025"
   const response = await cohere.chat({
     model,
     message: prompt,
@@ -91,7 +91,7 @@ async function tryCohere({ prompt, schema, userModel, userApiKey }: { prompt: st
 async function tryAnthropic({ prompt, schema, userModel, userApiKey }: { prompt: string; schema: z.ZodTypeAny; userModel?: string; userApiKey?: string }) {
   const apiKey = userApiKey || process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error("Anthropic API key missing")
-  const model = userModel || "claude-sonnet-4-20250514"
+  const model = userModel || "claude-sonnet-4-6-20250610"
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -127,7 +127,7 @@ async function tryGemini({ prompt, schema, userModel, userApiKey }: { prompt: st
   const apiKey = userApiKey || process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error("Gemini API key missing")
   const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({ model: userModel || "gemini-1.5-flash-latest" })
+  const model = genAI.getGenerativeModel({ model: userModel || "gemini-2.0-flash" })
   const result = await model.generateContent(prompt)
   const text = await result.response.text()
   try {
@@ -135,6 +135,42 @@ async function tryGemini({ prompt, schema, userModel, userApiKey }: { prompt: st
     return schema.parse(parsed)
   } catch (err) {
     console.error("[Gemini] Error parsing or validating response:", err)
+    throw err
+  }
+}
+
+async function tryDeepSeek({ prompt, schema, userModel, userApiKey }: { prompt: string; schema: z.ZodTypeAny; userModel?: string; userApiKey?: string }) {
+  const apiKey = userApiKey || process.env.DEEPSEEK_API_KEY
+  if (!apiKey) throw new Error("DeepSeek API key missing")
+  const model = userModel || "deepseek-chat"
+  const response = await fetch("https://api.deepseek.com/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: "You are a helpful assistant. Respond ONLY with valid JSON." },
+        { role: "user", content: prompt },
+      ],
+      max_tokens: 2048,
+      temperature: 0.7,
+    }),
+  })
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(`[DeepSeek Error]: ${response.status} ${response.statusText} - ${errText}`)
+  }
+  const data = await response.json()
+  const content = data.choices?.[0]?.message?.content
+  if (!content) throw new Error("DeepSeek: No content in response")
+  try {
+    const parsed = JSON.parse(stripCodeBlock(content))
+    return schema.parse(parsed)
+  } catch (err) {
+    console.error("[DeepSeek] Error parsing or validating response:", err)
     throw err
   }
 }
@@ -164,12 +200,13 @@ export async function callLLM({ prompt, schema, userProvider, userModel, userApi
     anthropic: tryAnthropic,
     groq: tryGroq,
     cohere: tryCohere,
+    deepseek: tryDeepSeek,
   }
   if (userProvider && Object.prototype.hasOwnProperty.call(providerMap, userProvider)) {
     return await providerMap[userProvider]({ prompt, schema, userModel, userApiKey })
   }
   // fallback: try all
-  const providers = [tryGroq, tryAnthropic, tryCohere, tryGemini, tryOpenAI]
+  const providers = [tryGroq, tryAnthropic, tryDeepSeek, tryCohere, tryGemini, tryOpenAI]
   for (const provider of providers) {
     try {
       const result = await provider({ prompt, schema, userModel, userApiKey })
