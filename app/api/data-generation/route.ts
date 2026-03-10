@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
             const zipBuffer = await kaggleClient.downloadDataset(datasetRef)
             if (!zipBuffer) throw new Error("Failed to download dataset from Kaggle")
             const directory = await unzipper.Open.buffer(zipBuffer)
-            const csvFile = directory.files.find((f) => f.path.endsWith(".csv"))
+            const csvFile = directory.files.find((f) => f.path.toLowerCase().endsWith(".csv"))
             if (!csvFile) throw new Error("No CSV file found in Kaggle dataset")
 
             // Stream directly from zip entry — only parse the first 20 rows

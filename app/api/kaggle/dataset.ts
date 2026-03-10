@@ -16,7 +16,13 @@ export async function POST(req: NextRequest) {
     }
 
     const meta = await kaggleClient.getDatasetMetadata(kaggle_ref)
-    const files = meta?.files || []
+    if (!meta) {
+      return NextResponse.json(
+        { error: `Failed to fetch metadata for dataset "${kaggle_ref}"` },
+        { status: 502 },
+      )
+    }
+    const files = meta.files || []
     return NextResponse.json({ files })
   } catch (error) {
     let message = "Unknown error"

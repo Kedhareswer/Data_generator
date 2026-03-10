@@ -50,7 +50,7 @@ async function tryGroq({ prompt, schema, userModel, userApiKey }: { prompt: stri
     const parsed = JSON.parse(stripCodeBlock(content))
     return schema.parse(parsed)
   } catch (err) {
-    console.error("[Groq] Error parsing response. Raw content:", content.substring(0, 500))
+    console.error("[Groq] Failed to parse JSON response (length:", content.length, ")")
     throw new Error("Groq returned invalid JSON response")
   }
 }
@@ -72,7 +72,7 @@ async function tryCohere({ prompt, schema, userModel, userApiKey }: { prompt: st
     const parsed = JSON.parse(stripCodeBlock(content))
     return schema.parse(parsed)
   } catch (err) {
-    console.error("[Cohere] Error parsing response. Raw content:", content.substring(0, 500))
+    console.error("[Cohere] Failed to parse JSON response (length:", content.length, ")")
     throw new Error("Cohere returned invalid JSON response")
   }
 }
@@ -107,7 +107,7 @@ async function tryAnthropic({ prompt, schema, userModel, userApiKey }: { prompt:
     const parsed = JSON.parse(stripCodeBlock(content))
     return schema.parse(parsed)
   } catch (err) {
-    console.error("[Anthropic] Error parsing response. Raw content:", content.substring(0, 500))
+    console.error("[Anthropic] Failed to parse JSON response (length:", content.length, ")")
     throw new Error("Anthropic returned invalid JSON response")
   }
 }
@@ -141,7 +141,7 @@ async function tryGemini({ prompt, schema, userModel, userApiKey }: { prompt: st
     const parsed = JSON.parse(stripCodeBlock(text))
     return schema.parse(parsed)
   } catch (err) {
-    console.error("[Gemini] Error parsing or validating response. Raw text:", text.substring(0, 500))
+    console.error("[Gemini] Failed to parse JSON response (length:", text.length, ")")
     throw new Error(`Gemini returned invalid JSON. Model: ${modelName}`)
   }
 }
@@ -177,7 +177,7 @@ async function tryDeepSeek({ prompt, schema, userModel, userApiKey }: { prompt: 
     const parsed = JSON.parse(stripCodeBlock(content))
     return schema.parse(parsed)
   } catch (err) {
-    console.error("[DeepSeek] Error parsing response. Raw content:", content.substring(0, 500))
+    console.error("[DeepSeek] Failed to parse JSON response (length:", content.length, ")")
     throw new Error("DeepSeek returned invalid JSON response")
   }
 }
@@ -220,14 +220,14 @@ export async function callLLM({ prompt, schema, userProvider, userModel, userApi
     }
     return await providerMap[userProvider]({ prompt, schema, userModel, userApiKey })
   }
-  // No provider specified — fallback: try all
+  // No provider specified — fallback: try all using only env-configured keys
   const providers = [tryGroq, tryAnthropic, tryDeepSeek, tryCohere, tryGemini, tryOpenAI]
   for (const provider of providers) {
     try {
-      const result = await provider({ prompt, schema, userModel, userApiKey })
+      const result = await provider({ prompt, schema, userModel })
       if (result) return result
-    } catch (e) {
-      // Optionally log: console.warn(`Provider failed: ${e}`)
+    } catch {
+      // Provider not configured or failed — try next
     }
   }
   throw new Error("No available LLM provider succeeded.")
