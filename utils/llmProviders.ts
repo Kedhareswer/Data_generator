@@ -80,7 +80,8 @@ async function tryCohere({ prompt, schema, userModel, userApiKey }: { prompt: st
 async function tryAnthropic({ prompt, schema, userModel, userApiKey }: { prompt: string; schema: z.ZodTypeAny; userModel?: string; userApiKey?: string }) {
   const apiKey = userApiKey || process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new Error("Anthropic API key missing")
-  const model = userModel || "claude-sonnet-4-6-20250610"
+  // Allow env override for default model; fall back to latest dated ID
+  const model = userModel || process.env.ANTHROPIC_DEFAULT_MODEL || "claude-sonnet-4-6-20250610"
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -184,10 +185,10 @@ async function tryDeepSeek({ prompt, schema, userModel, userApiKey }: { prompt: 
 
 function stripCodeBlock(text: string): string {
   let cleaned = text.trim()
-  // Remove opening code fence: ```json, ```JSON, ``` (with or without language tag)
-  cleaned = cleaned.replace(/^```(?:json|JSON)?\s*\n?/, "")
-  // Remove closing code fence
-  cleaned = cleaned.replace(/\n?```\s*$/, "")
+  // Remove opening code fence (case-insensitive, handles CRLF)
+  cleaned = cleaned.replace(/^```(?:json)?\s*\r?\n?/i, "")
+  // Remove closing code fence (handles CRLF)
+  cleaned = cleaned.replace(/\r?\n?```\s*$/, "")
   return cleaned.trim()
 }
 
@@ -220,11 +221,11 @@ export async function callLLM({ prompt, schema, userProvider, userModel, userApi
     }
     return await providerMap[userProvider]({ prompt, schema, userModel, userApiKey })
   }
-  // No provider specified — fallback: try all using only env-configured keys
+  // No provider specified — fallback: try all using only env-configured keys and default models
   const providers = [tryGroq, tryAnthropic, tryDeepSeek, tryCohere, tryGemini, tryOpenAI]
   for (const provider of providers) {
     try {
-      const result = await provider({ prompt, schema, userModel })
+      const result = await provider({ prompt, schema })
       if (result) return result
     } catch {
       // Provider not configured or failed — try next

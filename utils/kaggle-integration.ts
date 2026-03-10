@@ -72,23 +72,19 @@ export class KaggleIntegration {
   async getDatasetMetadata(datasetRef: string) {
     if (!this.hasCredentials()) return null
 
-    try {
-      const response = await fetch(`https://www.kaggle.com/api/v1/datasets/metadata/${datasetRef}`, {
-        headers: {
-          Authorization: this.getAuthHeader(),
-          "Content-Type": "application/json",
-        },
-      })
+    const response = await fetch(`https://www.kaggle.com/api/v1/datasets/metadata/${datasetRef}`, {
+      headers: {
+        Authorization: this.getAuthHeader(),
+        "Content-Type": "application/json",
+      },
+    })
 
-      if (!response.ok) {
-        throw new Error(`Kaggle API error: ${response.statusText}`)
-      }
-
-      return await response.json()
-    } catch (error) {
-      console.error("Kaggle metadata error:", error)
-      return null
+    if (!response.ok) {
+      const detail = await response.text().catch(() => response.statusText)
+      throw new Error(`Kaggle metadata API error (${response.status}): ${detail}`)
     }
+
+    return await response.json()
   }
 
   async downloadDataset(datasetRef: string): Promise<Buffer | null> {

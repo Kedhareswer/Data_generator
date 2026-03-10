@@ -21,10 +21,18 @@ export async function POST(req: NextRequest) {
     }
 
     const zipBuffer = await kaggleClient.downloadDataset(kaggle_ref)
-    if (!zipBuffer) throw new Error("Failed to download dataset from Kaggle")
+    if (!zipBuffer) {
+      return NextResponse.json({ error: `Failed to download dataset "${kaggle_ref}" from Kaggle` }, { status: 502 })
+    }
     const directory = await unzipper.Open.buffer(zipBuffer)
-    const csvFile = directory.files.find((f) => f.path === file_name)
-    if (!csvFile) throw new Error("File not found in Kaggle dataset")
+    const normalizedName = file_name.toLowerCase()
+    const csvFile = directory.files.find((f) => {
+      const basename = f.path.split("/").pop() || f.path
+      return basename.toLowerCase() === normalizedName || f.path.toLowerCase() === normalizedName
+    })
+    if (!csvFile) {
+      return NextResponse.json({ error: `File "${file_name}" not found in dataset` }, { status: 404 })
+    }
 
     // Stream directly from zip entry — only parse the first 20 rows
     const preview = await new Promise<Record<string, string>[]>((resolve, reject) => {

@@ -62,17 +62,32 @@ function isRecordStringString(obj: unknown): obj is Record<string, string> {
 /** Stream-parse a CSV readable, collecting only the first `limit` rows. */
 function parseFirstRows(stream: Readable, limit: number): Promise<Record<string, string>[]> {
   return new Promise<Record<string, string>[]>((resolve, reject) => {
+    let settled = false
     const rows: Record<string, string>[] = []
     const parser = stream.pipe(csvParse({ columns: true }))
+
+    function finish() {
+      if (settled) return
+      settled = true
+      resolve(rows)
+    }
+
     parser.on("data", (row: Record<string, string>) => {
       rows.push(row)
       if (rows.length >= limit) {
+        stream.unpipe(parser)
+        stream.destroy()
         parser.destroy()
       }
     })
-    parser.on("end", () => resolve(rows))
-    parser.on("close", () => resolve(rows))
-    parser.on("error", reject)
+    parser.on("end", finish)
+    parser.on("close", finish)
+    parser.on("error", (err) => {
+      if (settled) return
+      settled = true
+      stream.destroy()
+      reject(err)
+    })
   })
 }
 

@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     const meta = await kaggleClient.getDatasetMetadata(kaggle_ref)
     if (!meta) {
       return NextResponse.json(
-        { error: `Failed to fetch metadata for dataset "${kaggle_ref}"` },
+        { error: `No metadata returned for dataset "${kaggle_ref}". Check credentials.` },
         { status: 502 },
       )
     }
