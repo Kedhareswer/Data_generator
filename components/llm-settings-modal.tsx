@@ -13,6 +13,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { motion } from "framer-motion"
+import { toast } from "sonner"
 
 const PROVIDERS = [
   { value: "openai", label: "OpenAI" },
@@ -97,6 +98,11 @@ export function LLMSettingsModal({
   }, [provider])
 
   const handleSave = () => {
+    if (!apiKey.trim()) {
+      toast.error("API key is required")
+      return
+    }
+
     const settings = {
       provider,
       model: model === "custom" ? customModel : model,
@@ -107,6 +113,9 @@ export function LLMSettingsModal({
     localStorage.setItem("llmSettings", JSON.stringify(settings))
     if (onSave) onSave(settings)
     onOpenChange(false)
+
+    const providerLabel = PROVIDERS.find((p) => p.value === provider)?.label || provider
+    toast.success(`Settings saved — using ${providerLabel}`)
   }
 
   const providerModels = MODELS[provider] || [{ value: "custom", label: "Custom..." }]
