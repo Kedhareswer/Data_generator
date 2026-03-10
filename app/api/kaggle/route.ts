@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
-import { kaggleClient } from "@/utils/kaggle-integration"
+import { createKaggleClient } from "@/utils/kaggle-integration"
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt } = await req.json()
+    const { prompt, kaggleUsername, kaggleApiKey } = await req.json()
+    const kaggleClient = createKaggleClient(kaggleUsername, kaggleApiKey)
+
+    if (!kaggleClient.hasCredentials()) {
+      return NextResponse.json({ error: "Kaggle credentials not configured. Add them in Settings." }, { status: 400 })
+    }
+
     const searchResults = await kaggleClient.searchDatasets(prompt)
     const datasets = searchResults.datasets.slice(0, 5)
     const datasetRows = []

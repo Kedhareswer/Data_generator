@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
-import { kaggleClient } from "@/utils/kaggle-integration"
+import { createKaggleClient } from "@/utils/kaggle-integration"
 import * as unzipper from "unzipper"
 import * as csv from "csv-parse/sync"
 
 export async function POST(req: NextRequest) {
   try {
-    const { kaggle_ref, file_name } = await req.json()
+    const { kaggle_ref, file_name, kaggleUsername, kaggleApiKey } = await req.json()
+    const kaggleClient = createKaggleClient(kaggleUsername, kaggleApiKey)
+
+    if (!kaggleClient.hasCredentials()) {
+      return NextResponse.json({ error: "Kaggle credentials not configured. Add them in Settings." }, { status: 400 })
+    }
+
     const zipBuffer = await kaggleClient.downloadDataset(kaggle_ref)
     if (!zipBuffer) throw new Error("Failed to download dataset from Kaggle")
     const directory = await unzipper.Open.buffer(zipBuffer)
@@ -14,7 +20,7 @@ export async function POST(req: NextRequest) {
     const csvBuffer = await csvFile.buffer()
     const records = csv.parse(csvBuffer.toString(), { columns: true })
     const preview = records.slice(0, 20)
-    return NextResponse.json({ preview, cached: false })
+    return NextResponse.json({ preview })
   } catch (error) {
     let message = "Unknown error"
     if (error && typeof error === "object" && "message" in error && typeof (error as any).message === "string") {

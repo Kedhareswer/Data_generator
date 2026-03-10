@@ -17,9 +17,13 @@ export class KaggleIntegration {
   private apiKey: string
   private username: string
 
-  constructor() {
-    this.apiKey = process.env.KAGGLE_API_KEY || ""
-    this.username = process.env.KAGGLE_USERNAME || ""
+  constructor(username?: string, apiKey?: string) {
+    this.username = username || process.env.KAGGLE_USERNAME || ""
+    this.apiKey = apiKey || process.env.KAGGLE_API_KEY || ""
+  }
+
+  hasCredentials(): boolean {
+    return Boolean(this.username && this.apiKey)
   }
 
   private getAuthHeader(): string {
@@ -28,6 +32,10 @@ export class KaggleIntegration {
   }
 
   async searchDatasets(query: string, category?: string): Promise<KaggleSearchResult> {
+    if (!this.hasCredentials()) {
+      return { datasets: [], totalCount: 0 }
+    }
+
     try {
       const searchParams = new URLSearchParams({
         search: query,
@@ -62,6 +70,8 @@ export class KaggleIntegration {
   }
 
   async getDatasetMetadata(datasetRef: string) {
+    if (!this.hasCredentials()) return null
+
     try {
       const response = await fetch(`https://www.kaggle.com/api/v1/datasets/metadata/${datasetRef}`, {
         headers: {
@@ -82,6 +92,8 @@ export class KaggleIntegration {
   }
 
   async downloadDataset(datasetRef: string): Promise<Buffer | null> {
+    if (!this.hasCredentials()) return null
+
     try {
       const response = await fetch(`https://www.kaggle.com/api/v1/datasets/download/${datasetRef}`, {
         headers: {
@@ -101,4 +113,6 @@ export class KaggleIntegration {
   }
 }
 
-export const kaggleClient = new KaggleIntegration()
+export function createKaggleClient(username?: string, apiKey?: string): KaggleIntegration {
+  return new KaggleIntegration(username, apiKey)
+}

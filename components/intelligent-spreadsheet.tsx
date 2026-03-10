@@ -234,6 +234,8 @@ export function IntelligentSpreadsheet() {
           userProvider: llmSettings?.provider,
           userModel: llmSettings?.model,
           userApiKey: llmSettings?.apiKey,
+          kaggleUsername: llmSettings?.kaggleUsername,
+          kaggleApiKey: llmSettings?.kaggleApiKey,
         }),
       })
 
