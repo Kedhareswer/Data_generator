@@ -5,6 +5,18 @@ import { callLLM } from "@/utils/llmProviders"
 import { createKaggleClient } from "@/utils/kaggle-integration"
 import * as unzipper from "unzipper"
 import { parse as csvParse } from "csv-parse"
+import { Readable } from "stream"
+
+const RequestSchema = z.object({
+  prompt: z.string().min(1, "Prompt is required"),
+  dataSource: z.string().default("auto"),
+  currentData: z.any().optional(),
+  userProvider: z.string().optional(),
+  userModel: z.string().optional(),
+  userApiKey: z.string().optional(),
+  kaggleUsername: z.string().optional(),
+  kaggleApiKey: z.string().optional(),
+})
 
 const DataAnalysisSchema = z.object({
   dataType: z.enum(["movies", "companies", "people", "products", "sports", "general"]),
@@ -47,10 +59,27 @@ function isRecordStringString(obj: unknown): obj is Record<string, string> {
   )
 }
 
+/** Stream-parse a CSV readable, collecting only the first `limit` rows. */
+function parseFirstRows(stream: Readable, limit: number): Promise<Record<string, string>[]> {
+  return new Promise<Record<string, string>[]>((resolve, reject) => {
+    const rows: Record<string, string>[] = []
+    const parser = stream.pipe(csvParse({ columns: true }))
+    parser.on("data", (row: Record<string, string>) => {
+      rows.push(row)
+      if (rows.length >= limit) {
+        parser.destroy()
+      }
+    })
+    parser.on("end", () => resolve(rows))
+    parser.on("close", () => resolve(rows))
+    parser.on("error", reject)
+  })
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, dataSource, currentData, userProvider, userModel, userApiKey, kaggleUsername, kaggleApiKey } = await req.json()
-
+    const body = RequestSchema.parse(await req.json())
+    const { prompt, dataSource, userProvider, userModel, userApiKey, kaggleUsername, kaggleApiKey } = body
 
     // Step 1: Analyze the user request
     const analysis = await callLLM({
@@ -60,7 +89,6 @@ export async function POST(req: NextRequest) {
       userModel,
       userApiKey,
     })
-
 
     // Step 2: Try to get real data from Kaggle first
     let retrievedData: Record<string, string>[] = []
@@ -74,6 +102,7 @@ export async function POST(req: NextRequest) {
         if (isExplicitKaggle) {
           throw new Error("Kaggle credentials not configured. Add them in Settings.")
         }
+        // Non-explicit: skip Kaggle silently, fall through to synthetic
       } else {
         const searchQuery = analysis.searchTerms.join(" ")
         const searchResult = await kaggleClient.searchDatasets(searchQuery)
@@ -88,22 +117,11 @@ export async function POST(req: NextRequest) {
             const zipBuffer = await kaggleClient.downloadDataset(datasetRef)
             if (!zipBuffer) throw new Error("Failed to download dataset from Kaggle")
             const directory = await unzipper.Open.buffer(zipBuffer)
-            const csvFile = directory.files.find((f: any) => f.path.endsWith(".csv"))
+            const csvFile = directory.files.find((f) => f.path.endsWith(".csv"))
             if (!csvFile) throw new Error("No CSV file found in Kaggle dataset")
-            const csvBuffer = await csvFile.buffer()
 
-            // Stream-parse only the first 20 rows instead of loading everything
-            const previewRows = await new Promise<Record<string, string>[]>((resolve, reject) => {
-              const rows: Record<string, string>[] = []
-              const parser = csvParse(csvBuffer.toString(), { columns: true })
-              parser.on("data", (row: Record<string, string>) => {
-                rows.push(row)
-                if (rows.length >= 20) parser.destroy()
-              })
-              parser.on("end", () => resolve(rows))
-              parser.on("close", () => resolve(rows))
-              parser.on("error", reject)
-            })
+            // Stream directly from zip entry — only parse the first 20 rows
+            const previewRows = await parseFirstRows(csvFile.stream(), 20)
 
             const kaggleColumns = Object.keys(previewRows[0] || {})
             const requestedColumns = analysis.columns
@@ -168,7 +186,6 @@ Do NOT include any explanation, markdown, or code block. Only output the JSON.`
       }
     }
 
-
     // Step 4: Format data for spreadsheet (limit to 20 rows for preview)
     const limitedData = retrievedData.slice(0, 20)
 
@@ -198,11 +215,17 @@ Do NOT include any explanation, markdown, or code block. Only output the JSON.`
       isPreview: limitedData.length === 20,
     }
 
-
     return NextResponse.json({ action, metadata })
   } catch (error) {
     console.error("Data generation error:", error)
     let message = "Unknown error"
+    if (error instanceof z.ZodError) {
+      message = error.errors.map((e) => e.message).join(", ")
+      return NextResponse.json(
+        { action: { type: "ERROR", payload: { message: `Invalid request: ${message}` } } },
+        { status: 400 },
+      )
+    }
     if (error && typeof error === "object" && "message" in error && typeof (error as any).message === "string") {
       message = (error as any).message
     }
