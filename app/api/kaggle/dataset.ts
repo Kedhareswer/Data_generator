@@ -4,6 +4,11 @@ import { createKaggleClient } from "@/utils/kaggle-integration"
 export async function POST(req: NextRequest) {
   try {
     const { kaggle_ref, kaggleUsername, kaggleApiKey } = await req.json()
+
+    if (typeof kaggle_ref !== "string" || kaggle_ref.trim() === "") {
+      return NextResponse.json({ error: "Missing or invalid kaggle_ref" }, { status: 400 })
+    }
+
     const kaggleClient = createKaggleClient(kaggleUsername, kaggleApiKey)
 
     if (!kaggleClient.hasCredentials()) {

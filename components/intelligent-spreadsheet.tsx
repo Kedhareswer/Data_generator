@@ -44,8 +44,13 @@ export function IntelligentSpreadsheet() {
   const [examplePromptsExpanded, setExamplePromptsExpanded] = useState(false)
   const [llmSettings, setLLMSettings] = useState(() => {
     if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("llmSettings")
-      return saved ? JSON.parse(saved) : null
+      try {
+        const saved = localStorage.getItem("llmSettings")
+        return saved ? JSON.parse(saved) : null
+      } catch {
+        localStorage.removeItem("llmSettings")
+        return null
+      }
     }
     return null
   })

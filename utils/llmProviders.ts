@@ -2,32 +2,21 @@ import { z } from "zod"
 import { GoogleGenerativeAI } from "@google/generative-ai" // Gemini support
 import { CohereClient } from "cohere-ai"
 
-// Example: import { openai } from "@ai-sdk/openai"
-// Add imports for other SDKs/providers as needed
-
 // --- Provider wrappers ---
 
 async function tryOpenAI({ prompt, schema, userModel, userApiKey }: { prompt: string; schema: z.ZodTypeAny; userModel?: string; userApiKey?: string }) {
-  // If userApiKey is provided, temporarily override process.env.OPENAI_API_KEY
-  let restoreKey: string | undefined
-  if (userApiKey) {
-    restoreKey = process.env.OPENAI_API_KEY
-    process.env.OPENAI_API_KEY = userApiKey
-  }
-  try {
-    if (!process.env.OPENAI_API_KEY) throw new Error("OpenAI API key missing")
-    const { openai } = await import("@ai-sdk/openai")
-    const { generateObject } = await import("ai")
-    return (
-      await generateObject({
-        model: openai(userModel || "gpt-4.1"),
-        schema,
-        prompt,
-      })
-    ).object
-  } finally {
-    if (userApiKey) process.env.OPENAI_API_KEY = restoreKey
-  }
+  const apiKey = userApiKey || process.env.OPENAI_API_KEY
+  if (!apiKey) throw new Error("OpenAI API key missing")
+  const { createOpenAI } = await import("@ai-sdk/openai")
+  const { generateObject } = await import("ai")
+  const openai = createOpenAI({ apiKey })
+  return (
+    await generateObject({
+      model: openai(userModel || "gpt-4.1"),
+      schema,
+      prompt,
+    })
+  ).object
 }
 
 async function tryGroq({ prompt, schema, userModel, userApiKey }: { prompt: string; schema: z.ZodTypeAny; userModel?: string; userApiKey?: string }) {
@@ -225,10 +214,13 @@ export async function callLLM({ prompt, schema, userProvider, userModel, userApi
     cohere: tryCohere,
     deepseek: tryDeepSeek,
   }
-  if (userProvider && Object.prototype.hasOwnProperty.call(providerMap, userProvider)) {
+  if (userProvider) {
+    if (!Object.prototype.hasOwnProperty.call(providerMap, userProvider)) {
+      throw new Error(`Unsupported provider "${userProvider}". Supported: ${Object.keys(providerMap).join(", ")}`)
+    }
     return await providerMap[userProvider]({ prompt, schema, userModel, userApiKey })
   }
-  // fallback: try all
+  // No provider specified — fallback: try all
   const providers = [tryGroq, tryAnthropic, tryDeepSeek, tryCohere, tryGemini, tryOpenAI]
   for (const provider of providers) {
     try {

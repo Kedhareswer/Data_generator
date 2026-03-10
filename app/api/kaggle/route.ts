@@ -12,19 +12,19 @@ export async function POST(req: NextRequest) {
 
     const searchResults = await kaggleClient.searchDatasets(prompt)
     const datasets = searchResults.datasets.slice(0, 5)
-    const datasetRows = []
-    for (const ds of datasets) {
-      const meta = await kaggleClient.getDatasetMetadata(ds.ref)
-      const files = meta?.files || []
-      const columns = meta?.columns || []
-      datasetRows.push({
+    const metadataResults = await Promise.all(
+      datasets.map((ds) => kaggleClient.getDatasetMetadata(ds.ref).catch(() => null))
+    )
+    const datasetRows = datasets.map((ds, i) => {
+      const meta = metadataResults[i]
+      return {
         kaggle_ref: ds.ref,
         title: ds.title,
         description: ds.description,
-        files,
-        columns,
-      })
-    }
+        files: meta?.files || [],
+        columns: meta?.columns || [],
+      }
+    })
     return NextResponse.json({ datasets: datasetRows })
   } catch (error) {
     let message = "Unknown error"

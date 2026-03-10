@@ -78,30 +78,43 @@ export function LLMSettingsModal({
   const [customModel, setCustomModel] = useState("")
   const [kaggleUsername, setKaggleUsername] = useState("")
   const [kaggleApiKey, setKaggleApiKey] = useState("")
+  const [hydrated, setHydrated] = useState(false)
 
   // Load from localStorage on mount
   useEffect(() => {
-    const saved = localStorage.getItem("llmSettings")
-    if (saved) {
-      const parsed = JSON.parse(saved)
-      setProvider(parsed.provider || "openai")
-      const providerModels = MODELS[parsed.provider || "openai"]
-      setModel(parsed.model || (providerModels ? providerModels[0].value : "custom"))
-      setApiKey(parsed.apiKey || "")
-      setCustomModel(parsed.customModel || "")
-      setKaggleUsername(parsed.kaggleUsername || "")
-      setKaggleApiKey(parsed.kaggleApiKey || "")
+    try {
+      const saved = localStorage.getItem("llmSettings")
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        // Validate provider against known list
+        const validProvider = PROVIDERS.some((p) => p.value === parsed.provider)
+          ? parsed.provider
+          : "openai"
+        setProvider(validProvider)
+        // Validate model against known models for that provider
+        const providerModels = MODELS[validProvider] || []
+        const modelIsValid = providerModels.some((m) => m.value === parsed.model)
+        setModel(modelIsValid ? parsed.model : providerModels[0]?.value || "custom")
+        setApiKey(parsed.apiKey || "")
+        setCustomModel(parsed.customModel || "")
+        setKaggleUsername(parsed.kaggleUsername || "")
+        setKaggleApiKey(parsed.kaggleApiKey || "")
+      }
+    } catch {
+      localStorage.removeItem("llmSettings")
     }
+    setHydrated(true)
   }, [])
 
-  // Update model when provider changes
+  // Update model when provider changes (skip during initial hydration)
   useEffect(() => {
+    if (!hydrated) return
     const providerModels = MODELS[provider]
     if (providerModels) {
       setModel(providerModels[0].value)
     }
     setCustomModel("")
-  }, [provider])
+  }, [provider, hydrated])
 
   const handleSave = () => {
     if (!apiKey.trim()) {

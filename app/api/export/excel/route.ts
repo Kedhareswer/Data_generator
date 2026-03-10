@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import * as XLSX from "xlsx"
-import { z } from "zod"
+import { z, ZodError } from "zod"
 
 const ExportSchema = z.object({
   rows: z.array(z.object({
@@ -35,6 +35,12 @@ export async function POST(req: NextRequest) {
       },
     })
   } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        { error: "Validation failed", details: error.errors },
+        { status: 400 },
+      )
+    }
     console.error("Excel export error:", error)
     return NextResponse.json({ error: "Failed to export Excel file" }, { status: 500 })
   }

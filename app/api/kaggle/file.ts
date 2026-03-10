@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createKaggleClient } from "@/utils/kaggle-integration"
 import * as unzipper from "unzipper"
-import * as csv from "csv-parse/sync"
+import { parse as csvParse } from "csv-parse"
 
 export async function POST(req: NextRequest) {
   try {
     const { kaggle_ref, file_name, kaggleUsername, kaggleApiKey } = await req.json()
+
+    if (typeof kaggle_ref !== "string" || kaggle_ref.trim() === "") {
+      return NextResponse.json({ error: "Missing or invalid kaggle_ref" }, { status: 400 })
+    }
+    if (typeof file_name !== "string" || file_name.trim() === "") {
+      return NextResponse.json({ error: "Missing or invalid file_name" }, { status: 400 })
+    }
+
     const kaggleClient = createKaggleClient(kaggleUsername, kaggleApiKey)
 
     if (!kaggleClient.hasCredentials()) {
@@ -18,8 +26,20 @@ export async function POST(req: NextRequest) {
     const csvFile = directory.files.find((f: any) => f.path === file_name)
     if (!csvFile) throw new Error("File not found in Kaggle dataset")
     const csvBuffer = await csvFile.buffer()
-    const records = csv.parse(csvBuffer.toString(), { columns: true })
-    const preview = records.slice(0, 20)
+
+    // Stream-parse only the first 20 rows instead of loading everything
+    const preview = await new Promise<Record<string, string>[]>((resolve, reject) => {
+      const rows: Record<string, string>[] = []
+      const parser = csvParse(csvBuffer.toString(), { columns: true })
+      parser.on("data", (row: Record<string, string>) => {
+        rows.push(row)
+        if (rows.length >= 20) parser.destroy()
+      })
+      parser.on("end", () => resolve(rows))
+      parser.on("close", () => resolve(rows))
+      parser.on("error", reject)
+    })
+
     return NextResponse.json({ preview })
   } catch (error) {
     let message = "Unknown error"

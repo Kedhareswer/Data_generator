@@ -4,7 +4,7 @@ import { getDataExample } from "@/utils/data-examples"
 import { callLLM } from "@/utils/llmProviders"
 import { createKaggleClient } from "@/utils/kaggle-integration"
 import * as unzipper from "unzipper"
-import * as csv from "csv-parse/sync"
+import { parse as csvParse } from "csv-parse"
 
 const DataAnalysisSchema = z.object({
   dataType: z.enum(["movies", "companies", "people", "products", "sports", "general"]),
@@ -65,31 +65,52 @@ export async function POST(req: NextRequest) {
     // Step 2: Try to get real data from Kaggle first
     let retrievedData: Record<string, string>[] = []
     let actualSource = "synthetic"
+    const isExplicitKaggle = dataSource === "kaggle"
 
-    if (dataSource === "kaggle" || analysis.searchStrategy === "kaggle") {
+    if (isExplicitKaggle || analysis.searchStrategy === "kaggle") {
       const kaggleClient = createKaggleClient(kaggleUsername, kaggleApiKey)
 
       if (!kaggleClient.hasCredentials()) {
+        if (isExplicitKaggle) {
+          throw new Error("Kaggle credentials not configured. Add them in Settings.")
+        }
       } else {
         const searchQuery = analysis.searchTerms.join(" ")
         const searchResult = await kaggleClient.searchDatasets(searchQuery)
+
+        if (searchResult.datasets.length === 0 && isExplicitKaggle) {
+          throw new Error(`No Kaggle datasets found for "${searchQuery}". Try a different prompt.`)
+        }
 
         if (searchResult.datasets.length > 0) {
           try {
             const datasetRef = searchResult.datasets[0].ref
             const zipBuffer = await kaggleClient.downloadDataset(datasetRef)
-            if (zipBuffer) {
-              const directory = await unzipper.Open.buffer(zipBuffer)
-              const csvFile = directory.files.find((f: any) => f.path.endsWith(".csv"))
-              if (csvFile) {
-                const csvBuffer = await csvFile.buffer()
-                const records = csv.parse(csvBuffer.toString(), { columns: true })
-                const kaggleColumns = Object.keys(records[0] || {})
-                const requestedColumns = analysis.columns
-                const columnsMatch = requestedColumns.every((col: string) => kaggleColumns.includes(col))
-                let previewData = records.slice(0, 20)
-                if (!columnsMatch) {
-                  const transformPrompt = `Transform the following raw data to match the target schema:
+            if (!zipBuffer) throw new Error("Failed to download dataset from Kaggle")
+            const directory = await unzipper.Open.buffer(zipBuffer)
+            const csvFile = directory.files.find((f: any) => f.path.endsWith(".csv"))
+            if (!csvFile) throw new Error("No CSV file found in Kaggle dataset")
+            const csvBuffer = await csvFile.buffer()
+
+            // Stream-parse only the first 20 rows instead of loading everything
+            const previewRows = await new Promise<Record<string, string>[]>((resolve, reject) => {
+              const rows: Record<string, string>[] = []
+              const parser = csvParse(csvBuffer.toString(), { columns: true })
+              parser.on("data", (row: Record<string, string>) => {
+                rows.push(row)
+                if (rows.length >= 20) parser.destroy()
+              })
+              parser.on("end", () => resolve(rows))
+              parser.on("close", () => resolve(rows))
+              parser.on("error", reject)
+            })
+
+            const kaggleColumns = Object.keys(previewRows[0] || {})
+            const requestedColumns = analysis.columns
+            const columnsMatch = requestedColumns.every((col: string) => kaggleColumns.includes(col))
+            let previewData = previewRows
+            if (!columnsMatch) {
+              const transformPrompt = `Transform the following raw data to match the target schema:
 Raw Data Sample: ${JSON.stringify(previewData)}
 Target Columns: ${requestedColumns.join(", ")}
 
@@ -102,22 +123,21 @@ Rules:
 Return the transformed data as a JSON object with a single property "data" that is an array of objects, where each object has keys matching the target columns.
 
 Do NOT include any explanation, markdown, or code block. Only output the JSON.`
-                  const transformed = await callLLM({
-                    prompt: transformPrompt,
-                    schema: z.object({ data: z.array(z.record(z.string(), z.string())) }),
-                    userProvider,
-                    userModel,
-                    userApiKey,
-                  })
-                  previewData = Array.isArray(transformed.data)
-                    ? (transformed.data as unknown[]).filter(isRecordStringString)
-                    : []
-                }
-                retrievedData = previewData as Record<string, string>[]
-                actualSource = "kaggle"
-              }
+              const transformed = await callLLM({
+                prompt: transformPrompt,
+                schema: z.object({ data: z.array(z.record(z.string(), z.string())) }),
+                userProvider,
+                userModel,
+                userApiKey,
+              })
+              previewData = Array.isArray(transformed.data)
+                ? (transformed.data as unknown[]).filter(isRecordStringString)
+                : []
             }
+            retrievedData = previewData as Record<string, string>[]
+            actualSource = "kaggle"
           } catch (err) {
+            if (isExplicitKaggle) throw err
             console.error("Kaggle data download/parse/transform failed:", err)
           }
         }
