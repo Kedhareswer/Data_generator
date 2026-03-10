@@ -61,8 +61,8 @@ async function tryGroq({ prompt, schema, userModel, userApiKey }: { prompt: stri
     const parsed = JSON.parse(stripCodeBlock(content))
     return schema.parse(parsed)
   } catch (err) {
-    console.error("[Groq] Error parsing or validating response:", err)
-    throw err
+    console.error("[Groq] Error parsing response. Raw content:", content.substring(0, 500))
+    throw new Error("Groq returned invalid JSON response")
   }
 }
 
@@ -83,8 +83,8 @@ async function tryCohere({ prompt, schema, userModel, userApiKey }: { prompt: st
     const parsed = JSON.parse(stripCodeBlock(content))
     return schema.parse(parsed)
   } catch (err) {
-    console.error("[Cohere] Error parsing or validating response:", err)
-    throw err
+    console.error("[Cohere] Error parsing response. Raw content:", content.substring(0, 500))
+    throw new Error("Cohere returned invalid JSON response")
   }
 }
 
@@ -118,8 +118,8 @@ async function tryAnthropic({ prompt, schema, userModel, userApiKey }: { prompt:
     const parsed = JSON.parse(stripCodeBlock(content))
     return schema.parse(parsed)
   } catch (err) {
-    console.error("[Anthropic] Error parsing or validating response:", err)
-    throw err
+    console.error("[Anthropic] Error parsing response. Raw content:", content.substring(0, 500))
+    throw new Error("Anthropic returned invalid JSON response")
   }
 }
 
@@ -127,15 +127,33 @@ async function tryGemini({ prompt, schema, userModel, userApiKey }: { prompt: st
   const apiKey = userApiKey || process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error("Gemini API key missing")
   const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({ model: userModel || "gemini-2.0-flash" })
-  const result = await model.generateContent(prompt)
-  const text = await result.response.text()
+  const modelName = userModel || "gemini-2.0-flash"
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0.7,
+      maxOutputTokens: 2048,
+    },
+  })
+  let result
+  try {
+    result = await model.generateContent(prompt)
+  } catch (err: any) {
+    const msg = err?.message || String(err)
+    if (msg.includes("not found") || msg.includes("404")) {
+      throw new Error(`Gemini model "${modelName}" not found. Try "gemini-2.0-flash" or "gemini-2.5-flash-preview-05-20" instead.`)
+    }
+    throw new Error(`[Gemini Error]: ${msg}`)
+  }
+  const text = result.response.text()
+  if (!text) throw new Error("Gemini: Empty response")
   try {
     const parsed = JSON.parse(stripCodeBlock(text))
     return schema.parse(parsed)
   } catch (err) {
-    console.error("[Gemini] Error parsing or validating response:", err)
-    throw err
+    console.error("[Gemini] Error parsing or validating response. Raw text:", text.substring(0, 500))
+    throw new Error(`Gemini returned invalid JSON. Model: ${modelName}`)
   }
 }
 
@@ -170,13 +188,18 @@ async function tryDeepSeek({ prompt, schema, userModel, userApiKey }: { prompt: 
     const parsed = JSON.parse(stripCodeBlock(content))
     return schema.parse(parsed)
   } catch (err) {
-    console.error("[DeepSeek] Error parsing or validating response:", err)
-    throw err
+    console.error("[DeepSeek] Error parsing response. Raw content:", content.substring(0, 500))
+    throw new Error("DeepSeek returned invalid JSON response")
   }
 }
 
 function stripCodeBlock(text: string): string {
-  return text.replace(/^```json[\s\r\n]*|```$/g, "").trim()
+  let cleaned = text.trim()
+  // Remove opening code fence: ```json, ```JSON, ``` (with or without language tag)
+  cleaned = cleaned.replace(/^```(?:json|JSON)?\s*\n?/, "")
+  // Remove closing code fence
+  cleaned = cleaned.replace(/\n?```\s*$/, "")
+  return cleaned.trim()
 }
 
 // --- Main auto-selection logic ---

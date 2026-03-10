@@ -20,9 +20,8 @@ const SyntheticDataSchema = z.object({
 })
 
 async function generateRealisticData(columns: string[], rows: number, dataType: string, userProvider?: string, userModel?: string, userApiKey?: string) {
-  try {
-    const result = await callLLM({
-      prompt: `Generate ${rows} realistic rows of ${dataType} data with these columns: ${columns.join(", ")}.
+  const result = await callLLM({
+    prompt: `Generate ${rows} realistic rows of ${dataType} data with these columns: ${columns.join(", ")}.
 
 Respond ONLY with a valid JSON object matching this schema:
 {
@@ -32,16 +31,12 @@ Respond ONLY with a valid JSON object matching this schema:
 }
 
 Do NOT include any explanation, markdown, or code block. Only output the JSON.`,
-      schema: SyntheticDataSchema,
-      userProvider,
-      userModel,
-      userApiKey,
-    })
-    return result.data
-  } catch (error) {
-    console.error("Synthetic data generation failed:", error)
-    return []
-  }
+    schema: SyntheticDataSchema,
+    userProvider,
+    userModel,
+    userApiKey,
+  })
+  return result.data
 }
 
 function isRecordStringString(obj: unknown): obj is Record<string, string> {
