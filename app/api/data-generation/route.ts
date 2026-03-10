@@ -33,7 +33,7 @@ async function searchKaggleDatasets(searchTerms: string[]) {
       `https://www.kaggle.com/api/v1/datasets/list?search=${encodeURIComponent(searchQuery)}&sortBy=relevance&size=5`,
       {
         headers: {
-          Authorization: `Bearer ${process.env.KAGGLE_USERNAME}:${process.env.KAGGLE_API_KEY}`,
+          Authorization: `Basic ${Buffer.from(`${process.env.KAGGLE_USERNAME}:${process.env.KAGGLE_API_KEY}`).toString("base64")}`,
         },
       },
     )

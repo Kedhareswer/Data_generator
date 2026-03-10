@@ -22,6 +22,11 @@ export class KaggleIntegration {
     this.username = process.env.KAGGLE_USERNAME || ""
   }
 
+  private getAuthHeader(): string {
+    const credentials = Buffer.from(`${this.username}:${this.apiKey}`).toString("base64")
+    return `Basic ${credentials}`
+  }
+
   async searchDatasets(query: string, category?: string): Promise<KaggleSearchResult> {
     try {
       const searchParams = new URLSearchParams({
@@ -36,7 +41,7 @@ export class KaggleIntegration {
 
       const response = await fetch(`https://www.kaggle.com/api/v1/datasets/list?${searchParams}`, {
         headers: {
-          Authorization: `Bearer ${this.apiKey}`,
+          Authorization: this.getAuthHeader(),
           "Content-Type": "application/json",
         },
       })
@@ -60,7 +65,7 @@ export class KaggleIntegration {
     try {
       const response = await fetch(`https://www.kaggle.com/api/v1/datasets/metadata/${datasetRef}`, {
         headers: {
-          Authorization: `Bearer ${this.apiKey}`,
+          Authorization: this.getAuthHeader(),
           "Content-Type": "application/json",
         },
       })
@@ -80,7 +85,7 @@ export class KaggleIntegration {
     try {
       const response = await fetch(`https://www.kaggle.com/api/v1/datasets/download/${datasetRef}`, {
         headers: {
-          Authorization: `Bearer ${this.apiKey}`,
+          Authorization: this.getAuthHeader(),
         },
       })
 

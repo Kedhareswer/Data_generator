@@ -518,21 +518,20 @@ export const dataExamples = {
   },
 }
 
-export function getDataExample(dataType: string, columns: string[], maxRows = 20) {
-  const example = dataExamples[dataType]
+export function getDataExample(dataType: string, columns: string[], maxRows = 20): Record<string, string>[] {
+  const example = dataExamples[dataType as keyof typeof dataExamples]
   if (!example) return []
 
   return example.samples.slice(0, maxRows).map((item) => {
-    const result = {}
+    const result: Record<string, string> = {}
     columns.forEach((col) => {
-      // Find matching column by exact match or partial match
       const key = Object.keys(item).find(
         (k) =>
           k.toLowerCase() === col.toLowerCase() ||
           k.toLowerCase().includes(col.toLowerCase()) ||
           col.toLowerCase().includes(k.toLowerCase()),
       )
-      result[col] = key ? item[key] : `${col}_${Math.floor(Math.random() * 1000)}`
+      result[col] = key ? (item as Record<string, string>)[key] : `${col}_${Math.floor(Math.random() * 1000)}`
     })
     return result
   })

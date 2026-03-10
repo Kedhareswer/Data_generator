@@ -88,11 +88,39 @@ async function tryCohere({ prompt, schema, userModel, userApiKey }: { prompt: st
   }
 }
 
-async function tryCerebus({ prompt, schema, userModel, userApiKey }: { prompt: string; schema: z.ZodTypeAny; userModel?: string; userApiKey?: string }) {
-  const apiKey = userApiKey || process.env.CEREBUS_API_KEY
-  if (!apiKey) throw new Error("Cerebus API key missing")
-  // TODO: Add actual Cerebus SDK/model call here
-  throw new Error("Cerebus provider not implemented yet")
+async function tryAnthropic({ prompt, schema, userModel, userApiKey }: { prompt: string; schema: z.ZodTypeAny; userModel?: string; userApiKey?: string }) {
+  const apiKey = userApiKey || process.env.ANTHROPIC_API_KEY
+  if (!apiKey) throw new Error("Anthropic API key missing")
+  const model = userModel || "claude-sonnet-4-20250514"
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 2048,
+      messages: [
+        { role: "user", content: prompt },
+      ],
+    }),
+  })
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(`[Anthropic Error]: ${response.status} ${response.statusText} - ${errText}`)
+  }
+  const data = await response.json()
+  const content = data.content?.[0]?.text
+  if (!content) throw new Error("Anthropic: No content in response")
+  try {
+    const parsed = JSON.parse(stripCodeBlock(content))
+    return schema.parse(parsed)
+  } catch (err) {
+    console.error("[Anthropic] Error parsing or validating response:", err)
+    throw err
+  }
 }
 
 async function tryGemini({ prompt, schema, userModel, userApiKey }: { prompt: string; schema: z.ZodTypeAny; userModel?: string; userApiKey?: string }) {
@@ -136,16 +164,15 @@ export async function callLLM({ prompt, schema, userProvider, userModel, userApi
   const providerMap: ProviderMap = {
     openai: tryOpenAI,
     gemini: tryGemini,
-    anthropic: tryCerebus,
+    anthropic: tryAnthropic,
     groq: tryGroq,
     cohere: tryCohere,
-    cerebus: tryCerebus,
   }
   if (userProvider && Object.prototype.hasOwnProperty.call(providerMap, userProvider)) {
     return await providerMap[userProvider]({ prompt, schema, userModel, userApiKey })
   }
   // fallback: try all
-  const providers = [tryGroq, tryCerebus, tryCohere, tryGemini, tryOpenAI]
+  const providers = [tryGroq, tryAnthropic, tryCohere, tryGemini, tryOpenAI]
   for (const provider of providers) {
     try {
       const result = await provider({ prompt, schema, userModel, userApiKey })

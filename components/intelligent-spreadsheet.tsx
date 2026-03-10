@@ -2,21 +2,18 @@
 
 import type React from "react"
 
-import { useState, useRef, useEffect } from "react"
-import { useChat } from "ai/react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
-import { ChevronRight, ChevronDown } from "lucide-react"
+import { ChevronRight, ChevronDown, Download, Database, Search, Settings } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { SocialLinks } from "./social-links"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { type RowData, evaluateFormula, getCellId, getCellReference } from "@/utils/spreadsheet"
-import { Download, Database, Search } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { LLMSettingsModal } from "@/components/llm-settings-modal"
-import { Settings } from "lucide-react"
 
 const COLUMNS = 10
 const ROWS = 20
@@ -38,13 +35,11 @@ export function IntelligentSpreadsheet() {
   const [cellCommand, setCellCommand] = useState("")
   const [cellCommandLoading, setCellCommandLoading] = useState(false)
   const [debugInfo, setDebugInfo] = useState<string>("")
-  const inputRef = useRef<HTMLInputElement>(null)
 
+  const [input, setInput] = useState("")
   const [dataSource, setDataSource] = useState<string>("auto")
   const [isGeneratingData, setIsGeneratingData] = useState(false)
-  const [lastDataQuery, setLastDataQuery] = useState<string>("")
   const [dataMetadata, setDataMetadata] = useState<any>(null)
-  const [isPreviewMode, setIsPreviewMode] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [examplePromptsExpanded, setExamplePromptsExpanded] = useState(false)
   const [llmSettings, setLLMSettings] = useState(() => {
@@ -55,30 +50,6 @@ export function IntelligentSpreadsheet() {
     return null
   })
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading, setInput, error } = useChat({
-    api: "/api/spreadsheet",
-    onResponse: (response) => {
-      if (!response.ok) {
-        toast.error("Failed to process command")
-      }
-    },
-    onFinish: (message) => {
-      try {
-        const action = JSON.parse(message.content)
-        if (Object.keys(action).length === 0) {
-          throw new Error("Empty response from AI")
-        }
-        executeAction(action)
-        if (action.type !== "ERROR") {
-          toast.success("Command executed successfully")
-        }
-      } catch (error) {
-        console.error("Failed to parse AI response:", error)
-        toast.error(`Failed to parse AI response: ${error instanceof Error ? error.message : String(error)}`)
-      }
-    },
-  })
-
   const getCellValue = (cellReference: string): string | number => {
     const cellId = getCellId(cellReference)
     const [rowIndex, colIndex] = cellId.split("-").map((num) => Number.parseInt(num) - 1)
@@ -87,7 +58,6 @@ export function IntelligentSpreadsheet() {
   }
 
   const executeAction = (action: { type: string; payload: any }) => {
-    console.log("Executing action:", action) // Debug log
     switch (action.type) {
       case "EDIT_CELL":
         setRows((prevRows) =>
@@ -157,20 +127,6 @@ export function IntelligentSpreadsheet() {
     setCellCommand(cell?.formula || cell?.value?.toString() || "")
   }
 
-  const handleCellChange = (cellId: string, value: string) => {
-    setRows((prevRows) =>
-      prevRows.map((row) => ({
-        ...row,
-        cells: row.cells.map((cell) => (cell.id === cellId ? { ...cell, value, formula: value } : cell)),
-      })),
-    )
-  }
-
-  const handleMainInputSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    handleSubmit(e)
-  }
-
   const handleCellCommandSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (activeCell) {
@@ -222,16 +178,10 @@ export function IntelligentSpreadsheet() {
   }
 
   useEffect(() => {
-    if (activeCell && inputRef.current) {
-      inputRef.current.focus()
+    if (activeCell) {
+      // Focus handled by dialog auto-focus
     }
   }, [activeCell])
-
-  useEffect(() => {
-    if (error) {
-      toast.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  }, [error])
 
   const exportToCSV = () => {
     const csvContent = rows.map((row) => row.cells.map((cell) => `"${cell.value}"`).join(",")).join("\n")
@@ -272,7 +222,6 @@ export function IntelligentSpreadsheet() {
   const handleDataGeneration = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsGeneratingData(true)
-    setLastDataQuery(input)
 
     try {
       const response = await fetch("/api/data-generation", {
@@ -294,7 +243,6 @@ export function IntelligentSpreadsheet() {
       if (result.action) {
         executeAction(result.action)
         setDataMetadata(result.metadata)
-        setIsPreviewMode(result.metadata?.isPreview || false)
         toast.success(
           result.metadata?.isPreview
             ? "Data preview generated successfully (20 rows shown)"
@@ -372,12 +320,12 @@ export function IntelligentSpreadsheet() {
         <form onSubmit={handleDataGeneration} className="flex gap-2">
           <Input
             value={input}
-            onChange={handleInputChange}
+            onChange={(e) => setInput(e.target.value)}
             placeholder="Enter your data request (e.g., 'Netflix movies with IMDB_ID, title, genre, and release year')"
             className="flex-grow"
-            disabled={isLoading || isGeneratingData}
+            disabled={isGeneratingData}
           />
-          <Button type="submit" disabled={isLoading || isGeneratingData}>
+          <Button type="submit" disabled={isGeneratingData}>
             {isGeneratingData ? (
               <>
                 <Database className="w-4 h-4 mr-2 animate-spin" />
